@@ -1,47 +1,45 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db/database");
+const { supabase } = require("../supabaseClient");
 
-// Obtener materiales
-router.get("/", (req, res) => {
-  db.all("SELECT * FROM materiales", [], (err, rows) => {
-    if (err) res.status(400).json({ error: err.message });
-    else res.json({ data: rows });
-  });
+// ✅ Obtener todos los materiales
+router.get("/", async (req, res) => {
+  const { data, error } = await supabase.from("materiales").select("*");
+
+  if (error) return res.status(400).json({ error: error.message });
+
+  res.json({ data });
 });
 
-// Añadir material
-router.post("/", (req, res) => {
+// ✅ Añadir nuevo material
+router.post("/", async (req, res) => {
   const { descripcion, coste, nombre, fecha, pagado = 0 } = req.body;
 
-  const sql = `INSERT INTO materiales (descripcion, coste, nombre, fecha, pagado) VALUES (?, ?, ?, ?, ?)`;
-  const params = [descripcion, coste, nombre, fecha, pagado];
+  const { data, error } = await supabase
+    .from("materiales")
+    .insert([{ descripcion, coste, nombre, fecha, pagado }])
+    .select();
 
-  db.run(sql, params, function (err) {
-    if (err) {
-      console.error("❌ Error insertando material:", err.message);
-      res.status(400).json({ error: err.message });
-    } else {
-      res.json({ message: "Material añadido", id: this.lastID });
-    }
-  });
+  if (error) {
+    console.error("❌ Error insertando material:", error.message);
+    return res.status(400).json({ error: error.message });
+  }
+
+  res.json({ message: "Material añadido", id: data[0]?.id });
 });
 
-// Marcar material como pagado
-router.put("/:id", (req, res) => {
+// ✅ Actualizar estado de pago de un material
+router.put("/:id", async (req, res) => {
   const { pagado } = req.body;
 
-  db.run(
-    "UPDATE materiales SET pagado = ? WHERE id = ?",
-    [pagado, req.params.id],
-    function (err) {
-      if (err) {
-        res.status(400).json({ error: err.message });
-      } else {
-        res.json({ updated: this.changes });
-      }
-    }
-  );
+  const { error } = await supabase
+    .from("materiales")
+    .update({ pagado })
+    .eq("id", req.params.id);
+
+  if (error) return res.status(400).json({ error: error.message });
+
+  res.json({ message: "Material actualizado correctamente" });
 });
 
 module.exports = router;

@@ -1,103 +1,98 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db/database");
+const { supabase } = require("../supabaseClient");
 
 // Obtener todos los trabajos
-router.get("/", (req, res) => {
-  db.all("SELECT * FROM trabajos", [], (err, rows) => {
-    if (err) res.status(400).json({ error: err.message });
-    else res.json({ data: rows });
-  });
+router.get("/", async (req, res) => {
+  const { data, error } = await supabase.from("trabajos").select("*");
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ data });
 });
 
 // Añadir nuevo trabajo
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const { nombre, fecha, horas, pagado } = req.body;
 
-  const sql = `INSERT INTO trabajos (nombre, fecha, horas, pagado) VALUES (?, ?, ?, ?)`;
-  const params = [nombre, fecha, horas, pagado];
+  const { data, error } = await supabase
+    .from("trabajos")
+    .insert([{ nombre, fecha, horas, pagado }])
+    .select()
+    .single();
 
-  db.run(sql, params, function (err) {
-    if (err) {
-      res.status(400).json({ error: err.message });
-    } else {
-      res.json({ message: "Trabajo añadido", id: this.lastID });
-    }
-  });
+  if (error) return res.status(400).json({ error: error.message });
+
+  res.json({ message: "Trabajo añadido", id: data.id });
 });
 
 // Actualizar estado de pago de un trabajo
-router.put("/:id", (req, res) => {
+router.put("/:id", async (req, res) => {
   const { pagado } = req.body;
+  const id = parseInt(req.params.id);
 
-  db.run(
-    "UPDATE trabajos SET pagado = ? WHERE id = ?",
-    [pagado, req.params.id],
-    function (err) {
-      if (err) {
-        res.status(400).json({ error: err.message });
-      } else {
-        // Si se marca como pagado, actualizar resumen_mensual
-        if (pagado === 1) {
-          actualizarResumenMensual(req.params.id);
-        }
-        res.json({ updated: this.changes });
-      }
-    }
-  );
+  const { error } = await supabase
+    .from("trabajos")
+    .update({ pagado })
+    .eq("id", id);
+
+  if (error) return res.status(400).json({ error: error.message });
+
+  if (pagado === 1) {
+    await actualizarResumenMensual(id);
+  }
+
+  res.json({ updated: true });
 });
 
-// Función para actualizar resumen mensual
-function actualizarResumenMensual(trabajoId) {
-  const sqlTrabajo = `
-    SELECT trabajos.fecha, trabajos.horas, clientes.precioHora
-    FROM trabajos
-    INNER JOIN clientes ON trabajos.nombre = clientes.nombre
-    WHERE trabajos.id = ?
-  `;
+// Función para actualizar resumen mensual en Supabase
+async function actualizarResumenMensual(trabajoId) {
+  const { data: trabajo, error: errorTrabajo } = await supabase
+    .from("trabajos")
+    .select("fecha, horas, nombre")
+    .eq("id", trabajoId)
+    .single();
 
-  db.get(sqlTrabajo, [trabajoId], (err, trabajo) => {
-    if (err || !trabajo)
-      return console.error("❌ Error obteniendo trabajo:", err?.message);
+  if (errorTrabajo || !trabajo) {
+    console.error("❌ Error obteniendo trabajo:", errorTrabajo?.message);
+    return;
+  }
 
-    const fecha = new Date(trabajo.fecha);
-    const año = fecha.getFullYear();
-    const mes = fecha.getMonth() + 1;
-    const total = trabajo.horas * trabajo.precioHora;
+  const { data: cliente, error: errorCliente } = await supabase
+    .from("clientes")
+    .select("precioHora")
+    .eq("nombre", trabajo.nombre)
+    .single();
 
-    // Comprobar si ya existe registro para ese mes
-    const sqlCheck = `SELECT id, total FROM resumen_mensual WHERE año = ? AND mes = ?`;
+  if (errorCliente || !cliente) {
+    console.error("❌ Error obteniendo cliente:", errorCliente?.message);
+    return;
+  }
 
-    db.get(sqlCheck, [año, mes], (err2, row) => {
-      if (err2)
-        return console.error(
-          "❌ Error comprobando resumen mensual:",
-          err2.message
-        );
+  const fecha = new Date(trabajo.fecha);
+  const año = fecha.getFullYear();
+  const mes = fecha.getMonth() + 1;
+  const total = trabajo.horas * cliente.precioHora;
 
-      if (row) {
-        // Ya existe, actualizamos sumando
-        db.run(
-          `UPDATE resumen_mensual SET total = total + ? WHERE id = ?`,
-          [total, row.id],
-          (err3) => {
-            if (err3)
-              console.error("❌ Error actualizando resumen:", err3.message);
-          }
-        );
-      } else {
-        // No existe, insertamos nuevo
-        db.run(
-          `INSERT INTO resumen_mensual (año, mes, total) VALUES (?, ?, ?)`,
-          [año, mes, total],
-          (err4) => {
-            if (err4)
-              console.error("❌ Error insertando resumen:", err4.message);
-          }
-        );
-      }
-    });
-  });
+  const { data: resumen, error: errorResumen } = await supabase
+    .from("resumen_mensual")
+    .select("id, total")
+    .eq("año", año)
+    .eq("mes", mes)
+    .single();
+
+  if (errorResumen && errorResumen.code !== "PGRST116") {
+    console.error("❌ Error comprobando resumen:", errorResumen.message);
+    return;
+  }
+
+  if (resumen) {
+    await supabase
+      .from("resumen_mensual")
+      .update({ total: resumen.total + total })
+      .eq("id", resumen.id);
+  } else {
+    await supabase.from("resumen_mensual").insert([{ año, mes, total }]);
+  }
 }
 
 module.exports = router;

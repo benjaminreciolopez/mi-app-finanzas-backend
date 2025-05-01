@@ -1,20 +1,21 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db/database");
+const { createClient } = require("@supabase/supabase-js");
+
+// Configura Supabase
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Obtener todos los clientes
-router.get("/", (req, res) => {
-  db.all("SELECT * FROM clientes", [], (err, rows) => {
-    if (err) {
-      res.status(400).json({ error: err.message });
-    } else {
-      res.json({ data: rows }); // 👈 ESTO ES LO IMPORTANTE
-    }
-  });
+router.get("/", async (req, res) => {
+  const { data, error } = await supabase.from("clientes").select("*");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data });
 });
 
 // Añadir nuevo cliente
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const { nombre, precioHora } = req.body;
   if (!nombre || !precioHora) {
     return res
@@ -22,52 +23,49 @@ router.post("/", (req, res) => {
       .json({ error: "Nombre y precioHora son obligatorios" });
   }
 
-  db.run(
-    "INSERT INTO clientes (nombre, precioHora) VALUES (?, ?)",
-    [nombre, precioHora],
-    function (err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-      } else {
-        res.json({ message: "Cliente añadido", id: this.lastID });
-      }
-    }
-  );
+  const { data, error } = await supabase
+    .from("clientes")
+    .insert([{ nombre, precioHora }])
+    .select();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({ message: "Cliente añadido", id: data[0].id });
 });
 
 // Actualizar cliente
-router.put("/:id", (req, res) => {
-  const { nombre, precioHora } = req.body;
+router.put("/:id", async (req, res) => {
   const { id } = req.params;
+  const { nombre, precioHora } = req.body;
 
-  db.run(
-    "UPDATE clientes SET nombre = ?, precioHora = ? WHERE id = ?",
-    [nombre, precioHora, id],
-    function (err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-      } else if (this.changes === 0) {
-        res.status(404).json({ error: "Cliente no encontrado" });
-      } else {
-        res.json({ message: "Cliente actualizado", changes: this.changes });
-      }
-    }
-  );
+  const { error, data } = await supabase
+    .from("clientes")
+    .update({ nombre, precioHora })
+    .eq("id", id)
+    .select();
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data || data.length === 0)
+    return res.status(404).json({ error: "Cliente no encontrado" });
+
+  res.json({ message: "Cliente actualizado" });
 });
 
 // Eliminar cliente
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
-  db.run("DELETE FROM clientes WHERE id = ?", [id], function (err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else if (this.changes === 0) {
-      res.status(404).json({ error: "Cliente no encontrado" });
-    } else {
-      res.json({ message: "Cliente eliminado", changes: this.changes });
-    }
-  });
+  const { error, data } = await supabase
+    .from("clientes")
+    .delete()
+    .eq("id", id)
+    .select();
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data || data.length === 0)
+    return res.status(404).json({ error: "Cliente no encontrado" });
+
+  res.json({ message: "Cliente eliminado" });
 });
 
 module.exports = router;

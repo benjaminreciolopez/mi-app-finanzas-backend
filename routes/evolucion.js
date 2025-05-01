@@ -1,68 +1,63 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db/database");
+const { supabase } = require("../supabaseClient");
 
-// Obtener datos de evolución (todos los registros)
-router.get("/", (req, res) => {
+// Obtener evolución de un año concreto
+router.get("/", async (req, res) => {
   const año = parseInt(req.query.año) || new Date().getFullYear();
 
-  db.all(
-    "SELECT * FROM resumen_mensual WHERE año = ? ORDER BY mes",
-    [año],
-    (err, rows) => {
-      if (err) {
-        res.status(400).json({ error: err.message });
-      } else {
-        res.json({ data: rows });
-      }
-    }
-  );
+  const { data, error } = await supabase
+    .from("resumen_mensual")
+    .select("*")
+    .eq("año", año)
+    .order("mes", { ascending: true });
+
+  if (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  res.json({ data });
 });
 
-// Cerrar mes actual (calcular total de trabajos pagados y guardar)
-router.post("/cerrar-mes", (req, res) => {
+// Cerrar mes actual y guardar total
+router.post("/cerrar-mes", async (req, res) => {
   const fecha = new Date();
   const año = fecha.getFullYear();
-  const mes = fecha.getMonth() + 1; // (enero = 0 en JS)
+  const mes = fecha.getMonth() + 1;
 
-  // Primero, calcular el total de trabajos pagados del mes actual
   const mesInicio = `${año}-${mes.toString().padStart(2, "0")}-01`;
   const mesFin = `${año}-${(mes + 1).toString().padStart(2, "0")}-01`;
 
-  const sql = `
-    SELECT trabajos.horas, clientes.precioHora
-    FROM trabajos
-    INNER JOIN clientes ON trabajos.nombre = clientes.nombre
-    WHERE trabajos.pagado = 1
-      AND fecha >= ? AND fecha < ?
-  `;
+  const { data: trabajos, error } = await supabase
+    .from("trabajos")
+    .select("horas, nombre")
+    .eq("pagado", 1)
+    .gte("fecha", mesInicio)
+    .lt("fecha", mesFin);
 
-  db.all(sql, [mesInicio, mesFin], (err, rows) => {
-    if (err) {
-      res.status(400).json({ error: err.message });
-    } else {
-      const total = rows.reduce(
-        (acc, row) => acc + row.horas * row.precioHora,
-        0
-      );
+  if (error) return res.status(400).json({ error: error.message });
 
-      // Insertar el total en la tabla resumen_mensual
-      db.run(
-        `INSERT INTO resumen_mensual (año, mes, total) VALUES (?, ?, ?)`,
-        [año, mes, total],
-        function (err2) {
-          if (err2) {
-            res.status(400).json({ error: err2.message });
-          } else {
-            res.json({
-              message: "Mes cerrado exitosamente",
-              totalCerrado: total,
-            });
-          }
-        }
-      );
-    }
+  const clientesMap = {};
+  const { data: clientes } = await supabase
+    .from("clientes")
+    .select("nombre, precioHora");
+
+  clientes.forEach((c) => {
+    clientesMap[c.nombre] = c.precioHora;
   });
+
+  const total = trabajos.reduce((acc, t) => {
+    const precio = clientesMap[t.nombre] || 0;
+    return acc + t.horas * precio;
+  }, 0);
+
+  const { error: insertError } = await supabase
+    .from("resumen_mensual")
+    .insert([{ año, mes, total }]);
+
+  if (insertError) return res.status(400).json({ error: insertError.message });
+
+  res.json({ message: "Mes cerrado exitosamente", totalCerrado: total });
 });
 
 module.exports = router;
