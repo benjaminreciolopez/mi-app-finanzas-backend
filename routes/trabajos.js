@@ -4,10 +4,20 @@ const { supabase } = require("../supabaseClient");
 
 // Obtener todos los trabajos
 router.get("/", async (req, res) => {
-  const { data, error } = await supabase.from("trabajos").select("*");
+  try {
+    const { data, error } = await supabase.from("trabajos").select("*");
 
-  if (error) return res.status(400).json({ error: error.message });
-  res.json({ data });
+    if (error) {
+      console.error("❌ Supabase error:", error.message); // 👈 LOG IMPORTANTE
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("✅ Trabajos cargados:", data); // 👈 LOG IMPORTANTE
+    res.json({ data });
+  } catch (err) {
+    console.error("❌ Error inesperado:", err); // 👈 LOG IMPORTANTE
+    res.status(500).json({ error: "Error al obtener trabajos" });
+  }
 });
 
 // Añadir nuevo trabajo
