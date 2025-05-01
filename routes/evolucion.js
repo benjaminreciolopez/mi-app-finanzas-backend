@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { supabase } = require("../supabaseClient");
+const supabase = require("../supabaseClient"); // ✅ sin llaves
 
 // Obtener evolución de un año concreto
 router.get("/", async (req, res) => {

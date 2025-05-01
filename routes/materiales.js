@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { supabase } = require("../supabaseClient");
+const supabase = require("../supabaseClient"); // ✅ sin llaves
 
 // ✅ Obtener todos los materiales
 router.get("/", async (req, res) => {
