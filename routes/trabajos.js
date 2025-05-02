@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const supabase = require("../supabaseClient"); // ✅ sin llaves
+const supabase = require("../supabaseClient");
 
 // Obtener todos los trabajos
 router.get("/", async (req, res) => {
@@ -8,14 +8,14 @@ router.get("/", async (req, res) => {
     const { data, error } = await supabase.from("trabajos").select("*");
 
     if (error) {
-      console.error("❌ Supabase error:", error.message); // 👈 LOG IMPORTANTE
+      console.error("❌ Supabase error:", error.message);
       return res.status(500).json({ error: error.message });
     }
 
-    console.log("✅ Trabajos cargados:", data); // 👈 LOG IMPORTANTE
+    console.log("✅ Trabajos cargados:", data);
     res.json({ data });
   } catch (err) {
-    console.error("❌ Error inesperado:", err); // 👈 LOG IMPORTANTE
+    console.error("❌ Error inesperado:", err);
     res.status(500).json({ error: "Error al obtener trabajos" });
   }
 });
@@ -35,23 +35,34 @@ router.post("/", async (req, res) => {
   res.json({ message: "Trabajo añadido", id: data.id });
 });
 
-// Actualizar estado de pago de un trabajo
+// Actualizar trabajo (estado o campos generales)
 router.put("/:id", async (req, res) => {
-  const { pagado } = req.body;
   const id = parseInt(req.params.id);
 
   const { error } = await supabase
     .from("trabajos")
-    .update({ pagado })
+    .update(req.body)
     .eq("id", id);
 
   if (error) return res.status(400).json({ error: error.message });
 
-  if (pagado === 1) {
+  // Si se marcó como pagado, actualizar resumen
+  if (req.body.pagado === 1) {
     await actualizarResumenMensual(id);
   }
 
   res.json({ updated: true });
+});
+
+// ✅ Eliminar trabajo
+router.delete("/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+
+  const { error } = await supabase.from("trabajos").delete().eq("id", id);
+
+  if (error) return res.status(400).json({ error: error.message });
+
+  res.json({ deleted: true });
 });
 
 // Función para actualizar resumen mensual en Supabase
