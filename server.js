@@ -13,13 +13,31 @@ const evolucionRoutes = require("./routes/evolucion");
 const app = express();
 const PORT = 3001;
 
-// Middlewares
+// Orígenes permitidos (producción + builds temporales de Vercel)
+const allowedOrigins = [
+  "https://mi-app-finanzas-frontend.vercel.app",
+  /^https:\/\/mi-app-finanzas-frontend-git-.*\.vercel\.app$/,
+];
+
+// Middleware CORS dinámico
 app.use(
   cors({
-    origin:
-      "https://mi-app-finanzas-frontend-git-main-benjamins-projects-1d0caeba.vercel.app",
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        allowedOrigins.some((o) =>
+          typeof o === "string" ? o === origin : o.test(origin)
+        )
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error("No permitido por CORS"));
+      }
+    },
   })
 );
+
+// Otros middlewares
 app.use(bodyParser.json());
 
 // Rutas
