@@ -14,7 +14,12 @@ const app = express();
 const PORT = 3001;
 
 // Middlewares
-app.use(cors());
+app.use(
+  cors({
+    origin:
+      "https://mi-app-finanzas-frontend-git-main-benjamins-projects-1d0caeba.vercel.app",
+  })
+);
 app.use(bodyParser.json());
 
 // Rutas
