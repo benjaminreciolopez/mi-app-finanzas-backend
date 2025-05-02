@@ -50,6 +50,20 @@ router.post("/", async (req, res) => {
 
   res.json({ message: "Cliente añadido", id: data[0].id });
 });
+// Actualizar orden de clientes
+router.put("/orden", async (req, res) => {
+  const { ordenes } = req.body; // [{ id: 1, orden: 0 }, { id: 3, orden: 1 }, ...]
+
+  try {
+    const updates = ordenes.map(({ id, orden }) =>
+      supabase.from("clientes").update({ orden }).eq("id", id)
+    );
+    await Promise.all(updates);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Actualizar cliente
 router.put("/:id", async (req, res) => {
@@ -84,21 +98,6 @@ router.delete("/:id", async (req, res) => {
     return res.status(404).json({ error: "Cliente no encontrado" });
 
   res.json({ message: "Cliente eliminado" });
-});
-
-// Actualizar orden de clientes
-router.put("/orden", async (req, res) => {
-  const { ordenes } = req.body; // [{ id: 1, orden: 0 }, { id: 3, orden: 1 }, ...]
-
-  try {
-    const updates = ordenes.map(({ id, orden }) =>
-      supabase.from("clientes").update({ orden }).eq("id", id)
-    );
-    await Promise.all(updates);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
 });
 
 module.exports = router;
