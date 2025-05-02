@@ -26,9 +26,24 @@ router.post("/", async (req, res) => {
       .json({ error: "Nombre y precioHora son obligatorios" });
   }
 
+  // Obtener el orden más alto actual
+  const { data: existentes, error: errorConsulta } = await supabase
+    .from("clientes")
+    .select("orden")
+    .order("orden", { ascending: false })
+    .limit(1);
+
+  if (errorConsulta) {
+    return res.status(500).json({ error: errorConsulta.message });
+  }
+
+  const siguienteOrden =
+    existentes?.[0]?.orden != null ? existentes[0].orden + 1 : 0;
+
+  // Insertar con orden automático
   const { data, error } = await supabase
     .from("clientes")
-    .insert([{ nombre, precioHora }])
+    .insert([{ nombre, precioHora, orden: siguienteOrden }])
     .select();
 
   if (error) return res.status(500).json({ error: error.message });
