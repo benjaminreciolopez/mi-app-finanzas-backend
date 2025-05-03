@@ -39,6 +39,7 @@ app.use(
 
 // Otros middlewares
 app.use(bodyParser.json());
+app.use(express.json());
 
 // Rutas
 app.use("/api/clientes", clientesRoutes);
@@ -46,7 +47,6 @@ app.use("/api/trabajos", trabajosRoutes);
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/materiales", materialesRoutes);
 app.use("/api/evolucion", evolucionRoutes);
-
 // Start
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);

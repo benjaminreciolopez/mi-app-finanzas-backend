@@ -22,6 +22,7 @@ router.get("/", async (req, res) => {
 
 // Añadir nuevo pago
 router.post("/", async (req, res) => {
+  console.log("REQ BODY RECIBIDO:", req.body); // 👈 AÑADE ESTO
   const { clienteId, cantidad, fecha, observaciones } = req.body;
 
   if (!clienteId || !cantidad || !fecha) {
