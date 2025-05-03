@@ -30,9 +30,27 @@ router.post("/", async (req, res) => {
       .json({ error: "clienteId, cantidad y fecha son obligatorios" });
   }
 
+  const { data: cliente, error: errorCliente } = await supabase
+    .from("clientes")
+    .select("nombre")
+    .eq("id", clienteId)
+    .single();
+
+  if (errorCliente || !cliente) {
+    return res.status(400).json({ error: "Cliente no encontrado" });
+  }
+
   const { data, error } = await supabase
     .from("pagos")
-    .insert([{ clienteId, cantidad, fecha, observaciones }])
+    .insert([
+      {
+        clienteId,
+        nombre: cliente.nombre,
+        cantidad,
+        fecha,
+        observaciones,
+      },
+    ])
     .select()
     .single();
 
