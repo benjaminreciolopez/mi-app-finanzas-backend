@@ -64,6 +64,7 @@ router.post("/", async (req, res) => {
     .single();
 
   if (error) {
+    console.error("Error al insertar el pago:", error.message); // 👈 añade esta línea
     return res.status(400).json({ error: error.message });
   }
 
