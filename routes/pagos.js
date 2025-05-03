@@ -22,8 +22,14 @@ router.get("/", async (req, res) => {
 
 // Añadir nuevo pago
 router.post("/", async (req, res) => {
-  console.log("REQ BODY RECIBIDO:", req.body); // 👈 AÑADE ESTO
   const { clienteId, cantidad, fecha, observaciones } = req.body;
+
+  console.log("Datos recibidos:", {
+    clienteId,
+    cantidad,
+    fecha,
+    observaciones,
+  });
 
   if (!clienteId || !cantidad || !fecha) {
     return res
@@ -36,6 +42,8 @@ router.post("/", async (req, res) => {
     .select("nombre")
     .eq("id", clienteId)
     .single();
+
+  console.log("Resultado de búsqueda cliente:", { cliente, errorCliente });
 
   if (errorCliente || !cliente) {
     return res.status(400).json({ error: "Cliente no encontrado" });
