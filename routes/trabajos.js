@@ -20,19 +20,17 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Añadir nuevo trabajo
-router.post("/", async (req, res) => {
-  const { nombre, fecha, horas, pagado } = req.body;
-
-  const { data, error } = await supabase
-    .from("trabajos")
-    .insert([{ nombre, fecha, horas, pagado }])
-    .select()
-    .single();
-
-  if (error) return res.status(400).json({ error: error.message });
-
-  res.json({ message: "Trabajo añadido", id: data.id });
+// routes/trabajos.js
+router.post("/", (req, res) => {
+  const { clienteId, nombre, fecha, horas, pagado = 0 } = req.body;
+  db.run(
+    `INSERT INTO trabajos (clienteId, nombre, fecha, horas, pagado) VALUES (?, ?, ?, ?, ?)`,
+    [clienteId, nombre, fecha, horas, pagado],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: this.lastID });
+    }
+  );
 });
 
 // Actualizar trabajo (estado o campos generales)
