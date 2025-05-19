@@ -31,10 +31,8 @@ router.post("/", async (req, res) => {
     observaciones,
   });
 
-  if (!clienteId || !cantidad || !fecha) {
-    return res
-      .status(400)
-      .json({ error: "clienteId, cantidad y fecha son obligatorios" });
+  if (!clienteId || !cantidad || !fecha || isNaN(cantidad) || cantidad <= 0) {
+    return res.status(400).json({ error: "Datos de pago no válidos" });
   }
 
   const { data: cliente, error: errorCliente } = await supabase

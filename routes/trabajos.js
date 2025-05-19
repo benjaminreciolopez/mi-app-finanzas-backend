@@ -21,16 +21,21 @@ router.get("/", async (req, res) => {
 });
 
 // routes/trabajos.js
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const { clienteId, nombre, fecha, horas, pagado = 0 } = req.body;
-  db.run(
-    `INSERT INTO trabajos (clienteId, nombre, fecha, horas, pagado) VALUES (?, ?, ?, ?, ?)`,
-    [clienteId, nombre, fecha, horas, pagado],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ id: this.lastID });
-    }
-  );
+
+  const { data, error } = await supabase
+    .from("trabajos")
+    .insert([{ clienteId, nombre, fecha, horas, pagado }])
+    .select("id") // Para devolver el id del nuevo trabajo
+    .single();
+
+  if (error) {
+    console.error("❌ Supabase error al crear trabajo:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ id: data.id });
 });
 
 // Actualizar trabajo (estado o campos generales)

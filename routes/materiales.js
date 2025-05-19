@@ -13,11 +13,11 @@ router.get("/", async (req, res) => {
 
 // ✅ Añadir nuevo material
 router.post("/", async (req, res) => {
-  const { descripcion, coste, nombre, fecha, pagado = 0 } = req.body;
+  const { descripcion, coste, nombre, fecha, pagado = 0, clienteId } = req.body;
 
   const { data, error } = await supabase
     .from("materiales")
-    .insert([{ descripcion, coste, nombre, fecha, pagado }])
+    .insert([{ descripcion, coste, nombre, fecha, pagado, clienteId }])
     .select();
 
   if (error) {
