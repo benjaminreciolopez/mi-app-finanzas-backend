@@ -35,7 +35,10 @@ router.get("/", async (req, res) => {
   const pagos = pagosRes.data;
 
   const resumen = clientes.map((cliente) => {
-    const trabajosCliente = trabajos.filter((t) => t.clienteId === cliente.id);
+    const trabajosCliente = trabajos.filter(
+      (t) => t.clienteId === cliente.id && t.pagado !== 1
+    );
+
     const materialesCliente = materiales.filter(
       (m) => m.clienteid === cliente.id
     );
