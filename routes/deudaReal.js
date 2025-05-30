@@ -35,44 +35,39 @@ router.get("/", async (req, res) => {
   const pagos = pagosRes.data;
 
   const resumen = clientes.map((cliente) => {
-    // Solo trabajos pendientes
-    const trabajosPendientes = trabajos.filter(
-      (t) => t.clienteId === cliente.id && t.pagado !== 1
+    const trabajosCliente = trabajos.filter((t) => t.clienteId === cliente.id);
+    const materialesCliente = materiales.filter(
+      (m) => m.clienteid === cliente.id
     );
-    const horasPendientes = trabajosPendientes.reduce(
-      (acc, t) => acc + Number(t.horas || 0),
-      0
-    );
-    const costeTrabajosPendientes = horasPendientes * cliente.precioHora;
-
-    // Solo materiales pendientes
-    const materialesPendientes = materiales.filter(
-      (m) => m.clienteid === cliente.id && m.pagado !== 1
-    );
-    const costeMaterialesPendientes = materialesPendientes.reduce(
-      (acc, m) => acc + Number(m.coste || 0),
-      0
-    );
-
-    // Total pagado por el cliente
     const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
+
+    const precioHora = cliente.precioHora ?? 0;
+
+    // Suma solo los trabajos NO pagados
+    const totalHorasPendientes = trabajosCliente
+      .filter((t) => !t.pagado)
+      .reduce((acc, t) => acc + Number(t.horas), 0);
+
+    // Suma solo los materiales NO pagados
+    const totalMaterialesPendientes = materialesCliente
+      .filter((m) => !m.pagado)
+      .reduce((acc, m) => acc + Number(m.coste), 0);
+
+    const costePendiente =
+      totalHorasPendientes * precioHora + totalMaterialesPendientes;
     const totalPagado = pagosCliente.reduce(
-      (acc, p) => acc + Number(p.cantidad || 0),
+      (acc, p) => acc + Number(p.cantidad),
       0
     );
-
-    const totalDeuda = Math.max(
-      0,
-      costeTrabajosPendientes + costeMaterialesPendientes - totalPagado
-    );
+    const deudaReal = Math.max(0, costePendiente - totalPagado);
 
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
-      totalHorasPendientes: horasPendientes,
-      totalMaterialesPendientes: costeMaterialesPendientes,
       totalPagado,
-      totalDeuda,
+      horasPendientes: totalHorasPendientes,
+      materialesPendientes: totalMaterialesPendientes,
+      totalDeuda: deudaReal,
     };
   });
 
