@@ -73,9 +73,12 @@ router.get("/", async (req, res) => {
         if (pago.restante <= 0) continue;
 
         const aplicar = Math.min(pago.restante, restante);
-        pago.restante -= aplicar;
-        restante -= aplicar;
-        totalAsignado += aplicar;
+
+        if (aplicar > 0) {
+          pago.restante = +(pago.restante - aplicar).toFixed(2); // evita decimales locos
+          restante = +(restante - aplicar).toFixed(2);
+          totalAsignado += aplicar;
+        }
 
         if (restante <= 0) break;
       }
