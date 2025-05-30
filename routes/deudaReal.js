@@ -18,6 +18,12 @@ router.get("/", async (req, res) => {
     materialesRes.error ||
     pagosRes.error
   ) {
+    console.error("Errores detectados:", {
+      clientesRes: clientesRes.error,
+      trabajosRes: trabajosRes.error,
+      materialesRes: materialesRes.error,
+      pagosRes: pagosRes.error,
+    });
     return res
       .status(500)
       .json({ error: "Error al obtener datos de Supabase" });
@@ -61,6 +67,7 @@ router.get("/", async (req, res) => {
       totalDeuda,
     };
   });
+  console.log("Resumen final generado:", resumen);
 
   res.json(resumen);
 });
