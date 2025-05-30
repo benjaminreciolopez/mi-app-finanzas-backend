@@ -1,4 +1,6 @@
 require("dotenv").config();
+const fs = require("fs");
+console.log("Archivos en ./routes:", fs.readdirSync("./routes"));
 
 const express = require("express");
 const cors = require("cors");
