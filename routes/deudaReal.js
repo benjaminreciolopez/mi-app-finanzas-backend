@@ -37,7 +37,7 @@ router.get("/", async (req, res) => {
         id: t.id,
         tipo: "trabajo",
         fecha: t.fecha,
-        coste: t.horas * precioHora,
+        coste: +(t.horas * precioHora).toFixed(2),
         horas: t.horas,
       }));
 
@@ -47,7 +47,7 @@ router.get("/", async (req, res) => {
         id: m.id,
         tipo: "material",
         fecha: m.fecha,
-        coste: m.coste,
+        coste: +m.coste.toFixed(2),
       }));
 
     const tareasPendientes = [
@@ -66,16 +66,24 @@ router.get("/", async (req, res) => {
 
     let totalAsignado = 0;
 
-    for (const tarea of tareasPendientes) {
+    console.log(`\nCliente: ${cliente.nombre}`);
+    tareasPendientes.forEach((tarea, index) => {
+      console.log(
+        `\nTarea ${index + 1} (${tarea.tipo} - ${tarea.fecha}): coste ${
+          tarea.coste
+        }€`
+      );
       let restante = tarea.coste;
 
       for (const pago of pagosRestantes) {
         if (pago.restante <= 0) continue;
 
         const aplicar = Math.min(pago.restante, restante);
-
         if (aplicar > 0) {
-          pago.restante = +(pago.restante - aplicar).toFixed(2); // evita decimales locos
+          console.log(
+            `\tPago del ${pago.fecha} - antes: ${pago.restante}€, aplicar: ${aplicar}€`
+          );
+          pago.restante = +(pago.restante - aplicar).toFixed(2);
           restante = +(restante - aplicar).toFixed(2);
           totalAsignado += aplicar;
         }
@@ -83,8 +91,8 @@ router.get("/", async (req, res) => {
         if (restante <= 0) break;
       }
 
-      // Aquí la tarea ya ha sido cubierta hasta donde se pudo
-    }
+      console.log(`\tRestante sin cubrir: ${restante}€`);
+    });
 
     const totalHorasPendientes = trabajosPendientes.reduce(
       (acc, t) => acc + t.horas,
@@ -94,9 +102,11 @@ router.get("/", async (req, res) => {
       (acc, m) => acc + m.coste,
       0
     );
-    const totalPendiente =
-      totalHorasPendientes * precioHora + totalMaterialesPendientes;
-    const deudaReal = Math.max(0, totalPendiente - totalAsignado);
+    const totalPendiente = +(
+      totalHorasPendientes * precioHora +
+      totalMaterialesPendientes
+    ).toFixed(2);
+    const deudaReal = Math.max(0, +(totalPendiente - totalAsignado).toFixed(2));
 
     const pagosUsados = pagosCliente.map((p) => {
       const original = Number(p.cantidad);
@@ -106,7 +116,7 @@ router.get("/", async (req, res) => {
         id: p.id,
         fecha: p.fecha,
         cantidad: original,
-        usado: original - restante,
+        usado: +(original - restante).toFixed(2),
       };
     });
 
