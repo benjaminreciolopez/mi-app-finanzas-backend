@@ -6,7 +6,7 @@ router.get("/", async (req, res) => {
   const [clientesRes, trabajosRes, materialesRes, pagosRes] = await Promise.all(
     [
       supabase.from("clientes").select("id, nombre, precioHora"),
-      supabase.from("trabajos").select("clienteId, horas"),
+      supabase.from("trabajos").select("clienteId, horas, pagado"),
       supabase.from("materiales").select("clienteid, coste"),
       supabase.from("pagos").select("clienteId, cantidad"),
     ]
