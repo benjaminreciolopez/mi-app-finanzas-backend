@@ -9,6 +9,7 @@ const trabajosRoutes = require("./routes/trabajos");
 const pagosRoutes = require("./routes/pagos");
 const materialesRoutes = require("./routes/materiales");
 const evolucionRoutes = require("./routes/evolucion");
+const deudaRealRoutes = require("./routes/deudaReal");
 
 const app = express();
 const PORT = 3001;
@@ -47,6 +48,8 @@ app.use("/api/trabajos", trabajosRoutes);
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/materiales", materialesRoutes);
 app.use("/api/evolucion", evolucionRoutes);
+app.use("/api/deuda-real", deudaRealRoutes);
+
 // Start
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
