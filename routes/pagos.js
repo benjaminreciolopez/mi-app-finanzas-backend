@@ -125,3 +125,5 @@ router.delete("/:id", async (req, res) => {
 
   res.json({ message: "Pago eliminado correctamente" });
 });
+
+module.exports = router;
