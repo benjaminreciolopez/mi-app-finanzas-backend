@@ -1,4 +1,3 @@
-// backend/routes/asignaciones.js
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
@@ -6,7 +5,7 @@ const supabase = require("../supabaseClient");
 router.get("/:clienteId", async (req, res) => {
   const clienteId = req.params.clienteId;
   const { data, error } = await supabase
-    .from("asignaciones_pago") // <--- nombre correcto
+    .from("asignaciones_pago")
     .select("*")
     .eq("clienteId", clienteId)
     .order("fecha_pago", { ascending: true });
