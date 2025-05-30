@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
+const {
+  recalcularAsignacionesCliente,
+} = require("../utils/recalcularAsignaciones"); // <--- Importa aquí
+
 // ⚠️ AVISO IMPORTANTE:
 // La columna `nombre` en la tabla `pagos` está obsoleta.
 // Ya no se utiliza en el frontend ni se rellena en nuevas inserciones.
@@ -65,6 +69,7 @@ router.post("/", async (req, res) => {
     console.error("Error al insertar el pago:", error.message); // 👈 añade esta línea
     return res.status(400).json({ error: error.message });
   }
+  await recalcularAsignacionesCliente(clienteId);
 
   res.json({ id: data.id });
 });
@@ -73,6 +78,17 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { cantidad, fecha, observaciones } = req.body;
+
+  // Necesitas saber el clienteId. Lo buscas antes de actualizar.
+  const { data: pagoExistente, error: errPago } = await supabase
+    .from("pagos")
+    .select("clienteId")
+    .eq("id", id)
+    .single();
+
+  if (errPago || !pagoExistente) {
+    return res.status(404).json({ error: "Pago no encontrado" });
+  }
 
   const { error, data } = await supabase
     .from("pagos")
@@ -84,9 +100,7 @@ router.put("/:id", async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
-  if (!data || data.length === 0) {
-    return res.status(404).json({ error: "Pago no encontrado" });
-  }
+  await recalcularAsignacionesCliente(pagoExistente.clienteId);
 
   res.json({ message: "Pago actualizado correctamente" });
 });
@@ -95,13 +109,24 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
+  // Busca primero el clienteId del pago a eliminar
+  const { data: pago, error: errPago } = await supabase
+    .from("pagos")
+    .select("clienteId")
+    .eq("id", id)
+    .single();
+
+  if (errPago || !pago) {
+    return res.status(404).json({ error: "Pago no encontrado" });
+  }
+
   const { error } = await supabase.from("pagos").delete().eq("id", id);
 
   if (error) {
     return res.status(400).json({ error: error.message });
   }
 
+  await recalcularAsignacionesCliente(pago.clienteId);
+
   res.json({ message: "Pago eliminado correctamente" });
 });
-
-module.exports = router;
