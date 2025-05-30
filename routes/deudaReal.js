@@ -7,7 +7,7 @@ router.get("/", async (req, res) => {
     [
       supabase.from("clientes").select("id, nombre, precioHora"),
       supabase.from("trabajos").select("clienteId, horas"),
-      supabase.from("materiales").select("clienteId, coste"),
+      supabase.from("materiales").select("clienteid, coste"),
       supabase.from("pagos").select("clienteId, cantidad"),
     ]
   );
@@ -37,7 +37,7 @@ router.get("/", async (req, res) => {
   const resumen = clientes.map((cliente) => {
     const trabajosCliente = trabajos.filter((t) => t.clienteId === cliente.id);
     const materialesCliente = materiales.filter(
-      (m) => m.clienteId === cliente.id
+      (m) => m.clienteid === cliente.id
     );
     const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
 
