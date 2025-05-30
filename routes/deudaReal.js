@@ -6,9 +6,9 @@ router.get("/", async (req, res) => {
   const [clientesRes, trabajosRes, materialesRes, pagosRes] = await Promise.all(
     [
       supabase.from("clientes").select("id, nombre, precioHora"),
-      supabase.from("trabajos").select("clienteId, horas, pagado"),
-      supabase.from("materiales").select("clienteid, coste, pagado"),
-      supabase.from("pagos").select("clienteId, cantidad"),
+      supabase.from("trabajos").select("id, clienteId, fecha, horas, pagado"),
+      supabase.from("materiales").select("id, clienteid, fecha, coste, pagado"),
+      supabase.from("pagos").select("id, clienteId, fecha, cantidad"),
     ]
   );
 
@@ -18,12 +18,6 @@ router.get("/", async (req, res) => {
     materialesRes.error ||
     pagosRes.error
   ) {
-    console.error("Errores detectados:", {
-      clientesRes: clientesRes.error,
-      trabajosRes: trabajosRes.error,
-      materialesRes: materialesRes.error,
-      pagosRes: pagosRes.error,
-    });
     return res
       .status(500)
       .json({ error: "Error al obtener datos de Supabase" });
@@ -35,38 +29,78 @@ router.get("/", async (req, res) => {
   const pagos = pagosRes.data;
 
   const resumen = clientes.map((cliente) => {
-    const trabajosCliente = trabajos.filter((t) => t.clienteId === cliente.id);
-    const materialesCliente = materiales.filter(
-      (m) => m.clienteid === cliente.id
-    );
-    const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
-
     const precioHora = cliente.precioHora ?? 0;
 
-    // Suma solo los trabajos NO pagados
-    const totalHorasPendientes = trabajosCliente
-      .filter((t) => !t.pagado)
-      .reduce((acc, t) => acc + Number(t.horas), 0);
+    const trabajosPendientes = trabajos
+      .filter((t) => t.clienteId === cliente.id && !t.pagado)
+      .map((t) => ({
+        id: t.id,
+        tipo: "trabajo",
+        fecha: t.fecha,
+        coste: t.horas * precioHora,
+        horas: t.horas,
+      }));
 
-    // Suma solo los materiales NO pagados
-    const totalMaterialesPendientes = materialesCliente
-      .filter((m) => !m.pagado)
-      .reduce((acc, m) => acc + Number(m.coste), 0);
+    const materialesPendientes = materiales
+      .filter((m) => m.clienteid === cliente.id && !m.pagado)
+      .map((m) => ({
+        id: m.id,
+        tipo: "material",
+        fecha: m.fecha,
+        coste: m.coste,
+      }));
 
-    const costePendiente =
-      totalHorasPendientes * precioHora + totalMaterialesPendientes;
-    const totalPagado = pagosCliente.reduce(
-      (acc, p) => acc + Number(p.cantidad),
+    const tareasPendientes = [
+      ...trabajosPendientes,
+      ...materialesPendientes,
+    ].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    const pagosCliente = pagos
+      .filter((p) => p.clienteId === cliente.id)
+      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    let pagosRestantes = pagosCliente.map((p) => ({
+      ...p,
+      restante: Number(p.cantidad),
+    }));
+
+    let totalAsignado = 0;
+
+    for (const tarea of tareasPendientes) {
+      let restante = tarea.coste;
+
+      for (const pago of pagosRestantes) {
+        if (pago.restante <= 0) continue;
+
+        const aplicar = Math.min(pago.restante, restante);
+        pago.restante -= aplicar;
+        restante -= aplicar;
+        totalAsignado += aplicar;
+
+        if (restante <= 0) break;
+      }
+
+      // Aquí la tarea ya ha sido cubierta hasta donde se pudo
+    }
+
+    const totalHorasPendientes = trabajosPendientes.reduce(
+      (acc, t) => acc + t.horas,
       0
     );
-    const deudaReal = Math.max(0, costePendiente - totalPagado);
+    const totalMaterialesPendientes = materialesPendientes.reduce(
+      (acc, m) => acc + m.coste,
+      0
+    );
+    const totalPendiente =
+      totalHorasPendientes * precioHora + totalMaterialesPendientes;
+    const deudaReal = Math.max(0, totalPendiente - totalAsignado);
 
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
-      totalPagado,
-      totalHorasPendientes: totalHorasPendientes,
-      totalMaterialesPendientes: totalMaterialesPendientes,
+      totalPagado: totalAsignado,
+      totalHorasPendientes,
+      totalMaterialesPendientes,
       totalDeuda: deudaReal,
     };
   });
