@@ -1,17 +1,11 @@
+// backend/routes/asignaciones.js
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
+// SOLO ESTA RUTA BÁSICA (para que nada interfiera)
 router.get("/:clienteId", async (req, res) => {
-  const clienteId = req.params.clienteId;
-  const { data, error } = await supabase
-    .from("asignaciones_pago")
-    .select("*")
-    .eq("clienteId", clienteId)
-    .order("fecha_pago", { ascending: true });
-
-  if (error) return res.status(400).json({ error: error.message });
-  res.json(data);
+  res.json({ ok: true, clienteId: req.params.clienteId });
 });
 
 module.exports = router;
