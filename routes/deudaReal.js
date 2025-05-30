@@ -95,6 +95,18 @@ router.get("/", async (req, res) => {
       totalHorasPendientes * precioHora + totalMaterialesPendientes;
     const deudaReal = Math.max(0, totalPendiente - totalAsignado);
 
+    const pagosUsados = pagosCliente.map((p) => {
+      const original = Number(p.cantidad);
+      const restante =
+        pagosRestantes.find((r) => r.id === p.id)?.restante ?? original;
+      return {
+        id: p.id,
+        fecha: p.fecha,
+        cantidad: original,
+        usado: original - restante,
+      };
+    });
+
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
@@ -102,6 +114,7 @@ router.get("/", async (req, res) => {
       totalHorasPendientes,
       totalMaterialesPendientes,
       totalDeuda: deudaReal,
+      pagosUsados, // 👈 Se incluye aquí la lista detallada de pagos
     };
   });
 
