@@ -7,7 +7,7 @@ router.get("/", async (req, res) => {
     [
       supabase.from("clientes").select("id, nombre, precioHora"),
       supabase.from("trabajos").select("clienteId, horas, pagado"),
-      supabase.from("materiales").select("clienteid, coste"),
+      supabase.from("materiales").select("clienteid, coste, pagado"),
       supabase.from("pagos").select("clienteId, cantidad"),
     ]
   );
@@ -35,42 +35,46 @@ router.get("/", async (req, res) => {
   const pagos = pagosRes.data;
 
   const resumen = clientes.map((cliente) => {
-    const trabajosCliente = trabajos.filter(
+    // Solo trabajos pendientes
+    const trabajosPendientes = trabajos.filter(
       (t) => t.clienteId === cliente.id && t.pagado !== 1
     );
-
-    const materialesCliente = materiales.filter(
-      (m) => m.clienteid === cliente.id
+    const horasPendientes = trabajosPendientes.reduce(
+      (acc, t) => acc + Number(t.horas || 0),
+      0
     );
+    const costeTrabajosPendientes = horasPendientes * cliente.precioHora;
+
+    // Solo materiales pendientes
+    const materialesPendientes = materiales.filter(
+      (m) => m.clienteid === cliente.id && m.pagado !== 1
+    );
+    const costeMaterialesPendientes = materialesPendientes.reduce(
+      (acc, m) => acc + Number(m.coste || 0),
+      0
+    );
+
+    // Total pagado por el cliente
     const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
-
-    const totalHoras = trabajosCliente.reduce(
-      (acc, t) => acc + Number(t.horas),
-      0
-    );
-    const totalMateriales = materialesCliente.reduce(
-      (acc, m) => acc + Number(m.coste),
-      0
-    );
     const totalPagado = pagosCliente.reduce(
-      (acc, p) => acc + Number(p.cantidad),
+      (acc, p) => acc + Number(p.cantidad || 0),
       0
     );
+
     const totalDeuda = Math.max(
       0,
-      totalHoras * cliente.precioHora + totalMateriales - totalPagado
+      costeTrabajosPendientes + costeMaterialesPendientes - totalPagado
     );
 
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
-      totalHoras,
-      totalMateriales,
+      totalHorasPendientes: horasPendientes,
+      totalMaterialesPendientes: costeMaterialesPendientes,
       totalPagado,
       totalDeuda,
     };
   });
-  console.log("Resumen final generado:", resumen);
 
   res.json(resumen);
 });
