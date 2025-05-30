@@ -65,8 +65,8 @@ router.get("/", async (req, res) => {
       clienteId: cliente.id,
       nombre: cliente.nombre,
       totalPagado,
-      horasPendientes: totalHorasPendientes,
-      materialesPendientes: totalMaterialesPendientes,
+      totalHorasPendientes: totalHorasPendientes,
+      totalMaterialesPendientes: totalMaterialesPendientes,
       totalDeuda: deudaReal,
     };
   });
