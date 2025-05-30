@@ -114,7 +114,7 @@ router.get("/", async (req, res) => {
       totalHorasPendientes,
       totalMaterialesPendientes,
       totalDeuda: deudaReal,
-      pagosUsados, // 👈 Se incluye aquí la lista detallada de pagos
+      pagosUsados,
     };
   });
 
