@@ -1,83 +1,96 @@
-// utils/recalcularAsignaciones.js
+const supabase = require("../supabaseClient");
 
-async function recalcularAsignacionesCliente(supabase, clienteId) {
-  // Elimina asignaciones previas de este cliente
-  await supabase
-    .from("asignaciones_pago")
-    .delete()
-    .match({ cliente_id: clienteId }); // necesitas añadir cliente_id en la tabla, si no: filtra por trabajos/materiales del cliente
+async function recalcularAsignacionesCliente(clienteId) {
+  // 1. Borra todas las asignaciones de ese cliente
+  await supabase.from("asignaciones_pago").delete().eq("clienteId", clienteId);
 
-  // 1. Carga trabajos y materiales pendientes
-  const { data: trabajos } = await supabase
-    .from("trabajos")
-    .select("id, clienteId, horas, pagado, fecha")
-    .eq("clienteId", clienteId);
-
-  const { data: materiales } = await supabase
-    .from("materiales")
-    .select("id, clienteid, coste, pagado, fecha")
-    .eq("clienteid", clienteId);
-
-  const { data: clienteData } = await supabase
+  // 2. Trae trabajos y materiales pendientes + pagos del cliente
+  const { data: cliente } = await supabase
     .from("clientes")
     .select("id, precioHora")
     .eq("id", clienteId)
     .single();
+  if (!cliente) return;
 
-  const precioHora = clienteData.precioHora;
+  const { data: trabajos } = await supabase
+    .from("trabajos")
+    .select("id, clienteId, fecha, horas, pagado")
+    .eq("clienteId", clienteId);
 
-  const items = [
-    ...trabajos
-      .filter((t) => !t.pagado)
-      .map((t) => ({
-        tipo: "trabajo",
-        id: t.id,
-        fecha: t.fecha,
-        coste: Number(t.horas) * Number(precioHora),
-      })),
-    ...materiales
-      .filter((m) => !m.pagado)
-      .map((m) => ({
-        tipo: "material",
-        id: m.id,
-        fecha: m.fecha,
-        coste: Number(m.coste),
-      })),
-  ].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+  const { data: materiales } = await supabase
+    .from("materiales")
+    .select("id, clienteid, fecha, coste, pagado")
+    .eq("clienteid", clienteId);
 
-  // 2. Carga pagos (FIFO)
   const { data: pagos } = await supabase
     .from("pagos")
     .select("id, cantidad, fecha")
-    .eq("clienteId", clienteId)
-    .order("fecha", { ascending: true });
+    .eq("clienteId", clienteId);
 
-  let saldoPagos = pagos.map((p) => ({
-    id: p.id,
-    cantidad: Number(p.cantidad),
-    restante: Number(p.cantidad),
-  }));
+  // Agrupa tareas pendientes
+  const tareasPendientes = [
+    ...(trabajos || [])
+      .filter((t) => !t.pagado)
+      .map((t) => ({
+        id: t.id,
+        tipo: "trabajo",
+        fecha: t.fecha,
+        coste: t.horas * cliente.precioHora,
+      })),
+    ...(materiales || [])
+      .filter((m) => !m.pagado)
+      .map((m) => ({
+        id: m.id,
+        tipo: "material",
+        fecha: m.fecha,
+        coste: m.coste,
+      })),
+  ].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-  // 3. Recorre tareas pendientes y va asignando pagos
-  for (const item of items) {
-    let pendiente = item.coste;
-    for (const pago of saldoPagos) {
-      if (pago.restante <= 0 || pendiente <= 0) continue;
-      const uso = Math.min(pago.restante, pendiente);
-      // Inserta asignación
-      await supabase.from("asignaciones_pago").insert([
-        {
-          pago_id: pago.id,
-          tipo: item.tipo,
-          item_id: item.id,
-          cantidad: uso,
-          // Puedes añadir cliente_id aquí si la tabla lo tiene
-        },
-      ]);
-      pago.restante -= uso;
-      pendiente -= uso;
+  // Ordena los pagos por fecha
+  let pagosRestantes = (pagos || [])
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+    .map((p) => ({ ...p, restante: Number(p.cantidad) }));
+
+  // 3. Asignar pagos a tareas y guardar en la tabla asignaciones_pago
+  let inserts = [];
+  for (const tarea of tareasPendientes) {
+    let pendiente = tarea.coste;
+    for (const pago of pagosRestantes) {
+      if (pago.restante <= 0) continue;
+      const aplicar = Math.min(pago.restante, pendiente);
+      if (aplicar > 0) {
+        inserts.push({
+          clienteId,
+          pagoId: pago.id,
+          tipo: tarea.tipo, // "trabajo" o "material"
+          trabajoId: tarea.tipo === "trabajo" ? tarea.id : null,
+          materialId: tarea.tipo === "material" ? tarea.id : null,
+          usado: aplicar,
+          fecha_pago: pago.fecha,
+          fecha_tarea: tarea.fecha,
+        });
+        pago.restante -= aplicar;
+        pendiente -= aplicar;
+      }
+      if (pendiente <= 0) break;
     }
   }
-}
 
+  // 4. Inserta todas las asignaciones de golpe (solo si hay)
+  if (inserts.length) {
+    const { error } = await supabase.from("asignaciones_pago").insert(inserts);
+    if (error) {
+      console.error(
+        "Error insertando en asignaciones_pago:",
+        error.message,
+        error.details
+      );
+    } else {
+      console.log("Insertado correctamente en asignaciones_pago");
+    }
+  } else {
+    console.log("No hay asignaciones para insertar");
+  }
+}
 module.exports = { recalcularAsignacionesCliente };

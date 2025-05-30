@@ -5,11 +5,6 @@ const {
   recalcularAsignacionesCliente,
 } = require("../utils/recalcularAsignaciones"); // <--- Importa aquí
 
-// ⚠️ AVISO IMPORTANTE:
-// La columna `nombre` en la tabla `pagos` está obsoleta.
-// Ya no se utiliza en el frontend ni se rellena en nuevas inserciones.
-// Se mantiene solo por compatibilidad temporal. El campo válido es `clienteId`.
-
 // Obtener todos los pagos
 router.get("/", async (req, res) => {
   const { data, error } = await supabase
