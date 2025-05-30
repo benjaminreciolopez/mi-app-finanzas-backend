@@ -6,7 +6,7 @@ const supabase = require("../supabaseClient");
 router.get("/:clienteId", async (req, res) => {
   const clienteId = req.params.clienteId;
   const { data, error } = await supabase
-    .from("pagos_asignados")
+    .from("asignaciones_pago") // <--- nombre correcto
     .select("*")
     .eq("clienteId", clienteId)
     .order("fecha_pago", { ascending: true });
