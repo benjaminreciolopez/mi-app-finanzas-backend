@@ -92,10 +92,20 @@ router.get("/", async (req, res) => {
       clienteId: cliente.id,
       nombre: cliente.nombre,
       totalPagado: +totalPagado.toFixed(2),
-      totalHorasPendientes: trabajosPendientes.reduce(
-        (acc, t) => acc + t.horas,
-        0
-      ),
+      totalHorasPendientes: trabajosPendientes.reduce((acc, t) => {
+        // Suma el dinero ya asignado a este trabajo
+        const asignado = (asignaciones || [])
+          .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
+          .reduce((acc, a) => acc + Number(a.usado), 0);
+
+        // Si el trabajo está completamente pagado, pendiente=0
+        const pendienteDinero = Math.max(0, +(t.coste - asignado));
+        // Horas pendientes = dinero pendiente / precioHora
+        const horasPendientes = +(
+          pendienteDinero / (cliente.precioHora || 1)
+        ).toFixed(2);
+        return acc + horasPendientes;
+      }, 0),
       totalMaterialesPendientes: materialesPendientes.reduce(
         (acc, m) => acc + m.coste,
         0
