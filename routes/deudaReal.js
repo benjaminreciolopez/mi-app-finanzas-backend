@@ -17,17 +17,10 @@ router.get("/", async (req, res) => {
     .from("trabajos")
     .select("id, clienteId, fecha, horas, pagado");
 
+  // Materiales: **clienteid** (minúscula)
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
-    .select("id, clienteId, fecha, coste, pagado");
-
-  // DEBUG extra por si sigue fallando:
-  if (trabajosError) {
-    console.error("Error trabajos:", trabajosError.message);
-  }
-  if (materialesError) {
-    console.error("Error materiales:", materialesError.message);
-  }
+    .select("id, clienteid, fecha, coste, pagado");
 
   if (trabajosError || materialesError) {
     return res
@@ -35,7 +28,7 @@ router.get("/", async (req, res) => {
       .json({ error: "Error al obtener trabajos o materiales" });
   }
 
-  // 3. Asignaciones de pagos
+  // 3. Asignaciones de pagos: revisa nombres en la tabla
   const { data: asignaciones, error: asignacionesError } = await supabase
     .from("asignaciones_pago")
     .select("*");
@@ -59,9 +52,9 @@ router.get("/", async (req, res) => {
         horas: t.horas,
       }));
 
-    // Materiales pendientes
+    // Materiales pendientes (usa clienteid en minúscula)
     const materialesPendientes = (materiales || [])
-      .filter((m) => m.clienteId === cliente.id && !m.pagado)
+      .filter((m) => m.clienteid === cliente.id && !m.pagado)
       .map((m) => ({
         id: m.id,
         tipo: "material",
@@ -74,23 +67,23 @@ router.get("/", async (req, res) => {
 
     for (const t of trabajosPendientes) {
       const asignado = (asignaciones || [])
-        .filter((a) => a.trabajoId === t.id && a.clienteId === cliente.id)
+        .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
         .reduce((acc, a) => acc + Number(a.usado), 0);
       totalPendiente += Math.max(0, +(t.coste - asignado).toFixed(2));
     }
 
     for (const m of materialesPendientes) {
       const asignado = (asignaciones || [])
-        .filter((a) => a.materialId === m.id && a.clienteId === cliente.id)
+        .filter((a) => a.materialid === m.id && a.clienteid === cliente.id)
         .reduce((acc, a) => acc + Number(a.usado), 0);
       totalPendiente += Math.max(0, +(m.coste - asignado).toFixed(2));
     }
 
     // Resumen pagos usados
     const pagosUsados = (asignaciones || [])
-      .filter((a) => a.clienteId === cliente.id)
+      .filter((a) => a.clienteid === cliente.id)
       .reduce((acc, a) => {
-        acc[a.pagoId] = (acc[a.pagoId] || 0) + Number(a.usado);
+        acc[a.pagoid] = (acc[a.pagoid] || 0) + Number(a.usado);
         return acc;
       }, {});
     const totalPagado = Object.values(pagosUsados).reduce((a, b) => a + b, 0);
