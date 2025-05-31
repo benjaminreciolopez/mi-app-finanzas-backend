@@ -15,7 +15,7 @@ router.get("/:clienteId", async (req, res) => {
     .order("fecha_pago", { ascending: true });
 
   if (error) return res.status(400).json({ error: error.message });
-  res.json({ data }); // Uniformiza la respuesta
+  res.json(Array.isArray(data) ? data : []); // <--- asegura un array
 });
 
 module.exports = router;
