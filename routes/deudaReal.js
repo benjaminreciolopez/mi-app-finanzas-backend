@@ -17,7 +17,7 @@ router.get("/", async (req, res) => {
     .from("trabajos")
     .select("id, clienteId, fecha, horas, pagado");
 
-  // Materiales: **clienteid** (minúscula)
+  // Materiales
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
     .select("id, clienteid, fecha, coste, pagado");
@@ -61,7 +61,7 @@ router.get("/", async (req, res) => {
         horas: t.horas,
       }));
 
-    // Materiales pendientes (usa clienteid en minúscula)
+    // Materiales pendientes
     const materialesPendientes = (materiales || [])
       .filter((m) => m.clienteid === cliente.id && !m.pagado)
       .map((m) => ({
@@ -71,7 +71,7 @@ router.get("/", async (req, res) => {
         coste: +m.coste.toFixed(2),
       }));
 
-    // Suma pendiente por pagar usando asignaciones
+    // Dinero pendiente de cada tarea/material (total coste - asignado)
     let totalPendiente = 0;
     for (const t of trabajosPendientes) {
       const asignado = (asignaciones || [])
@@ -86,20 +86,33 @@ router.get("/", async (req, res) => {
       totalPendiente += Math.max(0, +(m.coste - asignado).toFixed(2));
     }
 
-    // Total asignado a tareas completas
+    // Suma lo asignado (dinero ya asignado a tareas)
     const totalAsignado = (asignaciones || [])
       .filter((a) => a.clienteid === cliente.id)
       .reduce((acc, a) => acc + Number(a.usado), 0);
 
-    // Suma todos los pagos del cliente
+    // Suma todos los pagos del cliente (total pagado aunque no cubra todo)
     const totalPagos = (pagos || [])
       .filter((p) => p.clienteId === cliente.id)
       .reduce((acc, p) => acc + Number(p.cantidad), 0);
 
-    // Saldo a cuenta (pagos no asignados)
+    // Saldo a cuenta (pagos no asignados todavía a tareas completas)
     const saldoACuenta = totalPagos - totalAsignado;
 
-    // Resumen pagos usados por cada pago (opcional para la tabla de pagos)
+    // Deuda real: lo pendiente - saldo a cuenta (si hay saldo suelto), nunca negativo
+    const deudaReal = Math.max(0, +(totalPendiente - saldoACuenta).toFixed(2));
+
+    // Horas pendientes (solo lo que queda por pagar de cada trabajo dividido precioHora)
+    const totalHorasPendientes = trabajosPendientes.reduce((acc, t) => {
+      const asignado = (asignaciones || [])
+        .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
+        .reduce((acc, a) => acc + Number(a.usado), 0);
+      const pendienteDinero = Math.max(0, +(t.coste - asignado));
+      const horasPendientes = +(pendienteDinero / (precioHora || 1)).toFixed(2);
+      return acc + horasPendientes;
+    }, 0);
+
+    // Para la tabla de pagos por cliente
     const pagosUsados = (asignaciones || [])
       .filter((a) => a.clienteid === cliente.id)
       .reduce((acc, a) => {
@@ -107,24 +120,11 @@ router.get("/", async (req, res) => {
         return acc;
       }, {});
 
-    // Deuda real: lo pendiente menos el saldo a cuenta, nunca negativa
-    const deudaReal = Math.max(0, +(totalPendiente - saldoACuenta).toFixed(2));
-
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
       totalPagado: +totalAsignado.toFixed(2),
-      totalHorasPendientes: trabajosPendientes.reduce((acc, t) => {
-        // Suma el dinero ya asignado a este trabajo
-        const asignado = (asignaciones || [])
-          .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
-          .reduce((acc, a) => acc + Number(a.usado), 0);
-        const pendienteDinero = Math.max(0, +(t.coste - asignado));
-        const horasPendientes = +(
-          pendienteDinero / (cliente.precioHora || 1)
-        ).toFixed(2);
-        return acc + horasPendientes;
-      }, 0),
+      totalHorasPendientes,
       totalMaterialesPendientes: materialesPendientes.reduce(
         (acc, m) => acc + m.coste,
         0

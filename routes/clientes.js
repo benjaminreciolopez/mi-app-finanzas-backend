@@ -19,12 +19,13 @@ router.get("/", async (req, res) => {
 
 // Añadir nuevo cliente
 router.post("/", async (req, res) => {
-  const { nombre, precioHora } = req.body;
-  if (!nombre || !precioHora) {
+  let { nombre, precioHora } = req.body;
+  if (!nombre || precioHora === undefined || isNaN(Number(precioHora))) {
     return res
       .status(400)
-      .json({ error: "Nombre y precioHora son obligatorios" });
+      .json({ error: "Nombre y precioHora numérico son obligatorios" });
   }
+  precioHora = Number(precioHora);
 
   // Obtener el orden más alto actual
   const { data: existentes, error: errorConsulta } = await supabase
@@ -50,15 +51,23 @@ router.post("/", async (req, res) => {
 
   res.json({ message: "Cliente añadido", id: data[0].id });
 });
+
 // Actualizar orden de clientes
 router.put("/orden", async (req, res) => {
   const { ordenes } = req.body; // [{ id: 1, orden: 0 }, { id: 3, orden: 1 }, ...]
-
   try {
-    const updates = ordenes.map(({ id, orden }) =>
-      supabase.from("clientes").update({ orden }).eq("id", id)
+    // Usamos Promise.allSettled para saber si alguno falla
+    const updates = await Promise.allSettled(
+      ordenes.map(({ id, orden }) =>
+        supabase.from("clientes").update({ orden }).eq("id", id)
+      )
     );
-    await Promise.all(updates);
+    const fallos = updates.filter((u) => u.status === "rejected");
+    if (fallos.length) {
+      return res
+        .status(500)
+        .json({ error: "Algún orden no se actualizó correctamente" });
+    }
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -68,11 +77,18 @@ router.put("/orden", async (req, res) => {
 // Actualizar cliente
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
-  const { nombre, precioHora } = req.body;
+  const campos = {};
+  if (req.body.nombre !== undefined) campos.nombre = req.body.nombre;
+  if (req.body.precioHora !== undefined)
+    campos.precioHora = Number(req.body.precioHora);
+
+  if (Object.keys(campos).length === 0) {
+    return res.status(400).json({ error: "No hay campos para actualizar" });
+  }
 
   const { error, data } = await supabase
     .from("clientes")
-    .update({ nombre, precioHora })
+    .update(campos)
     .eq("id", id)
     .select();
 

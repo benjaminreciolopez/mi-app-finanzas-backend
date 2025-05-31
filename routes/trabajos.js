@@ -1,18 +1,18 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
+const {
+  recalcularAsignacionesCliente,
+} = require("../utils/recalcularAsignacionesCliente");
 
 // Obtener todos los trabajos
 router.get("/", async (req, res) => {
   try {
     const { data, error } = await supabase.from("trabajos").select("*");
-
     if (error) {
       console.error("❌ Supabase error:", error.message);
       return res.status(500).json({ error: error.message });
     }
-
-    console.log("✅ Trabajos cargados:", data);
     res.json({ data });
   } catch (err) {
     console.error("❌ Error inesperado:", err);
@@ -20,7 +20,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// routes/trabajos.js
+// Añadir nuevo trabajo y recalcular asignaciones
 router.post("/", async (req, res) => {
   const { clienteId, nombre, fecha, horas, pagado = 0 } = req.body;
 
@@ -35,12 +35,28 @@ router.post("/", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
+  // ⬇️ Recalcular asignaciones tras añadir el trabajo
+  if (clienteId) {
+    await recalcularAsignacionesCliente(clienteId);
+  }
+
   res.json({ id: data.id });
 });
 
-// Actualizar trabajo (estado o campos generales)
+// Actualizar trabajo (estado o campos generales) y recalcular asignaciones
 router.put("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
+
+  // Buscar el clienteId si no viene en el body
+  let clienteId = req.body.clienteId;
+  if (!clienteId) {
+    const { data: trabajo } = await supabase
+      .from("trabajos")
+      .select("clienteId")
+      .eq("id", id)
+      .single();
+    clienteId = trabajo?.clienteId;
+  }
 
   const { error } = await supabase
     .from("trabajos")
@@ -49,7 +65,12 @@ router.put("/:id", async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
 
-  // Si se marcó como pagado, actualizar resumen
+  // ⬇️ Recalcular asignaciones tras la actualización
+  if (clienteId) {
+    await recalcularAsignacionesCliente(clienteId);
+  }
+
+  // Si se marcó como pagado, actualizar resumen mensual
   if (req.body.pagado === 1) {
     await actualizarResumenMensual(id);
   }
@@ -57,13 +78,25 @@ router.put("/:id", async (req, res) => {
   res.json({ updated: true });
 });
 
-// ✅ Eliminar trabajo
+// Eliminar trabajo y recalcular asignaciones
 router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
+
+  // Buscar el clienteId del trabajo a eliminar
+  const { data: trabajo } = await supabase
+    .from("trabajos")
+    .select("clienteId")
+    .eq("id", id)
+    .single();
 
   const { error } = await supabase.from("trabajos").delete().eq("id", id);
 
   if (error) return res.status(400).json({ error: error.message });
+
+  // ⬇️ Recalcular asignaciones tras eliminar el trabajo
+  if (trabajo?.clienteId) {
+    await recalcularAsignacionesCliente(trabajo.clienteId);
+  }
 
   res.json({ deleted: true });
 });
