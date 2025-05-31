@@ -5,11 +5,11 @@ async function recalcularAsignacionesCliente(clienteId) {
   console.log("\n---- INICIO RECÁLCULO ASIGNACIONES ----");
   console.log("ClienteId recibido:", clienteId);
 
-  // 1. Borra todas las asignaciones de ese cliente (corregido a clienteid)
+  // 1. Borra todas las asignaciones de ese cliente
   const { error: errDel } = await supabase
     .from("asignaciones_pago")
     .delete()
-    .eq("clienteid", clienteId); // <- minúscula como en la tabla
+    .eq("clienteId", clienteId);
   if (errDel) {
     console.error("Error al borrar asignaciones anteriores:", errDel.message);
     return;
@@ -37,8 +37,8 @@ async function recalcularAsignacionesCliente(clienteId) {
 
   const { data: materiales } = await supabase
     .from("materiales")
-    .select("id, clienteid, fecha, coste, pagado")
-    .eq("clienteid", clienteId);
+    .select("id, clienteId, fecha, coste, pagado")
+    .eq("clienteId", clienteId);
   console.log("Materiales del cliente:", materiales);
 
   const { data: pagos } = await supabase
@@ -86,22 +86,22 @@ async function recalcularAsignacionesCliente(clienteId) {
       if (aplicar > 0) {
         // Añadimos logs de los valores
         console.log("Preparando insert:", {
-          clienteid: clienteId,
-          pagoid: pago.id,
+          clienteId: clienteId,
+          pagoId: pago.id,
           tipo: tarea.tipo,
-          trabajoid: tarea.tipo === "trabajo" ? tarea.id : null,
-          materialid: tarea.tipo === "material" ? tarea.id : null,
+          trabajoId: tarea.tipo === "trabajo" ? tarea.id : null,
+          materialId: tarea.tipo === "material" ? tarea.id : null,
           usado: aplicar,
           fecha_pago: pago.fecha,
           fecha_tarea: tarea.fecha,
         });
 
         inserts.push({
-          clienteid: clienteId,
-          pagoid: pago.id,
+          clienteId: clienteId,
+          pagoId: pago.id,
           tipo: tarea.tipo,
-          trabajoid: tarea.tipo === "trabajo" ? tarea.id : null,
-          materialid: tarea.tipo === "material" ? tarea.id : null,
+          trabajoId: tarea.tipo === "trabajo" ? tarea.id : null,
+          materialId: tarea.tipo === "material" ? tarea.id : null,
           usado: aplicar,
           fecha_pago: pago.fecha,
           fecha_tarea: tarea.fecha,

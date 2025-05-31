@@ -3,7 +3,7 @@ const router = express.Router();
 const supabase = require("../supabaseClient");
 const {
   recalcularAsignacionesCliente,
-} = require("../utils/recalcularAsignaciones"); // <--- Importa aquí
+} = require("../utils/recalcularAsignaciones");
 
 // Obtener todos los pagos
 router.get("/", async (req, res) => {
@@ -50,7 +50,7 @@ router.post("/", async (req, res) => {
     .from("pagos")
     .insert([
       {
-        clienteId,
+        clienteId, // <-- asegurarse de que el campo se llama igual en la BBDD
         nombre: cliente.nombre,
         cantidad,
         fecha,
@@ -61,7 +61,7 @@ router.post("/", async (req, res) => {
     .single();
 
   if (error) {
-    console.error("Error al insertar el pago:", error.message); // 👈 añade esta línea
+    console.error("Error al insertar el pago:", error.message);
     return res.status(400).json({ error: error.message });
   }
   await recalcularAsignacionesCliente(clienteId);
@@ -74,7 +74,7 @@ router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { cantidad, fecha, observaciones } = req.body;
 
-  // Necesitas saber el clienteId. Lo buscas antes de actualizar.
+  // Busca el clienteId del pago antes de actualizar
   const { data: pagoExistente, error: errPago } = await supabase
     .from("pagos")
     .select("clienteId")
