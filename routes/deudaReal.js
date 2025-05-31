@@ -6,7 +6,7 @@ router.get("/", async (req, res) => {
   // 1. Obtén clientes y precioHora
   const { data: clientes, error: clientesError } = await supabase
     .from("clientes")
-    .select("id, nombre, precioHora"); // <-- igualar a lo de trabajos
+    .select("id, nombre, precioHora");
 
   if (clientesError) {
     return res.status(500).json({ error: "Error al obtener clientes" });
@@ -15,11 +15,19 @@ router.get("/", async (req, res) => {
   // 2. Trabajos pendientes de cada cliente
   const { data: trabajos, error: trabajosError } = await supabase
     .from("trabajos")
-    .select("id, clienteId, fecha, horas, pagado"); // <-- ojo aquí: clienteId
+    .select("id, clienteId, fecha, horas, pagado");
 
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
-    .select("id, clienteId, fecha, coste, pagado"); // <-- clienteId
+    .select("id, clienteId, fecha, coste, pagado");
+
+  // DEBUG extra por si sigue fallando:
+  if (trabajosError) {
+    console.error("Error trabajos:", trabajosError.message);
+  }
+  if (materialesError) {
+    console.error("Error materiales:", materialesError.message);
+  }
 
   if (trabajosError || materialesError) {
     return res
