@@ -1,4 +1,4 @@
-// backend/utils/recalcularAsignaciones.js
+// backend/utils/recalcularAsignacionesCliente.js
 const supabase = require("../supabaseClient");
 
 async function recalcularAsignacionesCliente(clienteId) {
@@ -6,26 +6,23 @@ async function recalcularAsignacionesCliente(clienteId) {
   console.log("ClienteId recibido:", clienteId);
 
   // 1. Borra todas las asignaciones de ese cliente
-  await supabase.from("asignaciones_pago").delete().eq("clienteid", clienteId);
-
-  // 2. Marca todos los trabajos y materiales como NO pagados
-  await supabase
-    .from("trabajos")
-    .update({ pagado: false })
-    .eq("clienteId", clienteId);
-
-  await supabase
-    .from("materiales")
-    .update({ pagado: false })
+  const { error: errDel } = await supabase
+    .from("asignaciones_pago")
+    .delete()
     .eq("clienteid", clienteId);
+  if (errDel) {
+    console.error("Error al borrar asignaciones anteriores:", errDel.message);
+    return;
+  } else {
+    console.log("Asignaciones anteriores borradas (si existían)");
+  }
 
-  // 3. Trae datos cliente, trabajos, materiales y pagos
+  // 2. Trae trabajos y materiales pendientes + pagos del cliente
   const { data: cliente } = await supabase
     .from("clientes")
     .select("id, precioHora")
     .eq("id", clienteId)
     .single();
-
   if (!cliente) {
     console.error("No se encontró el cliente.");
     return;
@@ -38,62 +35,75 @@ async function recalcularAsignacionesCliente(clienteId) {
 
   const { data: materiales } = await supabase
     .from("materiales")
-    .select("id, clienteid, fecha, coste, pagado")
-    .eq("clienteid", clienteId);
+    .select("id, clienteId, fecha, coste, pagado")
+    .eq("clienteId", clienteId);
 
   const { data: pagos } = await supabase
     .from("pagos")
     .select("id, cantidad, fecha")
     .eq("clienteId", clienteId);
 
-  // 4. Agrupa tareas pendientes (trabajos y materiales NO pagados)
+  // Agrupa tareas pendientes (trabajos y materiales NO pagados)
   const tareasPendientes = [
-    ...(trabajos || []).map((t) => ({
-      id: t.id,
-      tipo: "trabajo",
-      fecha: t.fecha,
-      coste: t.horas * cliente.precioHora,
-    })),
-    ...(materiales || []).map((m) => ({
-      id: m.id,
-      tipo: "material",
-      fecha: m.fecha,
-      coste: m.coste,
-    })),
+    ...(trabajos || [])
+      .filter((t) => !t.pagado)
+      .map((t) => ({
+        id: t.id,
+        tipo: "trabajo",
+        fecha: t.fecha,
+        coste: t.horas * cliente.precioHora,
+      })),
+    ...(materiales || [])
+      .filter((m) => !m.pagado)
+      .map((m) => ({
+        id: m.id,
+        tipo: "material",
+        fecha: m.fecha,
+        coste: m.coste,
+      })),
   ].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-  // 5. Ordena pagos (y filtra negativos si quieres)
+  // Ordena pagos y calcula el saldo total disponible
   let pagosRestantes = (pagos || [])
     .filter((p) => p.cantidad > 0)
     .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
     .map((p) => ({ ...p, restante: Number(p.cantidad) }));
 
-  // 6. Asignar pagos a tareas y preparar inserts
+  let saldoDisponible = pagosRestantes.reduce((acc, p) => acc + p.restante, 0);
+
+  // 3. Asignar pagos SOLO a tareas/mats que se puedan pagar completas
   let inserts = [];
   for (const tarea of tareasPendientes) {
-    let pendiente = tarea.coste;
-    for (const pago of pagosRestantes) {
-      if (pago.restante <= 0) continue;
-      const aplicar = Math.min(pago.restante, pendiente);
-      if (aplicar > 0) {
-        inserts.push({
-          clienteid: clienteId,
-          pagoid: pago.id,
-          tipo: tarea.tipo,
-          trabajoid: tarea.tipo === "trabajo" ? tarea.id : null,
-          materialid: tarea.tipo === "material" ? tarea.id : null,
-          usado: aplicar,
-          fecha_pago: pago.fecha,
-          fecha_tarea: tarea.fecha,
-        });
-        pago.restante -= aplicar;
-        pendiente -= aplicar;
+    if (saldoDisponible >= tarea.coste) {
+      // Asigna solo si hay saldo suficiente para la tarea entera
+      let pendiente = tarea.coste;
+      for (const pago of pagosRestantes) {
+        if (pago.restante <= 0) continue;
+        const aplicar = Math.min(pago.restante, pendiente);
+        if (aplicar > 0) {
+          inserts.push({
+            clienteid: clienteId,
+            pagoid: pago.id,
+            tipo: tarea.tipo,
+            trabajoid: tarea.tipo === "trabajo" ? tarea.id : null,
+            materialid: tarea.tipo === "material" ? tarea.id : null,
+            usado: aplicar,
+            fecha_pago: pago.fecha,
+            fecha_tarea: tarea.fecha,
+          });
+          pago.restante -= aplicar;
+          pendiente -= aplicar;
+          saldoDisponible -= aplicar;
+        }
+        if (pendiente <= 0) break;
       }
-      if (pendiente <= 0) break;
+    } else {
+      // No hay saldo para pagar esta tarea por completo, se queda pendiente
+      continue;
     }
   }
 
-  // 7. Inserta todas las asignaciones de golpe (solo si hay)
+  // 4. Inserta todas las asignaciones de golpe (solo si hay)
   if (inserts.length) {
     const result = await supabase.from("asignaciones_pago").insert(inserts);
     if (result.error) {
@@ -102,39 +112,23 @@ async function recalcularAsignacionesCliente(clienteId) {
         result.error.message,
         result.error.details
       );
+    } else {
+      console.log(
+        `Insertadas ${inserts.length} asignaciones en asignaciones_pago.`
+      );
     }
+  } else {
+    console.log("No hay asignaciones para insertar");
   }
 
-  // 8. Marca como pagados los trabajos/materiales TOTALMENTE cubiertos
-  // Trae asignaciones frescas tras el insert:
-  const { data: nuevasAsignaciones } = await supabase
-    .from("asignaciones_pago")
-    .select("*")
-    .eq("clienteid", clienteId);
-
-  // Trabajos
-  for (const t of trabajos || []) {
-    const asignado = (nuevasAsignaciones || [])
-      .filter((a) => a.trabajoid === t.id)
-      .reduce((acc, a) => acc + Number(a.usado), 0);
-    const coste = t.horas * cliente.precioHora;
-    if (asignado >= coste - 0.01) {
-      // margen de redondeo
-      await supabase.from("trabajos").update({ pagado: true }).eq("id", t.id);
-    }
-  }
-  // Materiales
-  for (const m of materiales || []) {
-    const asignado = (nuevasAsignaciones || [])
-      .filter((a) => a.materialid === m.id)
-      .reduce((acc, a) => acc + Number(a.usado), 0);
-    if (asignado >= m.coste - 0.01) {
-      await supabase.from("materiales").update({ pagado: true }).eq("id", m.id);
-    }
-  }
+  // 5. Opcional: Devuelve saldo a cuenta (no asignado)
+  const saldoACuenta = saldoDisponible;
 
   console.log("---- FIN RECÁLCULO ASIGNACIONES ----\n");
-  return inserts.length;
+  return {
+    asignaciones: inserts.length,
+    saldoACuenta, // <- para descontar en la deuda real si lo necesitas
+  };
 }
 
 module.exports = { recalcularAsignacionesCliente };
