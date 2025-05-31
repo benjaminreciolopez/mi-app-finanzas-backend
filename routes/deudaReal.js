@@ -3,35 +3,45 @@ const router = express.Router();
 const supabase = require("../supabaseClient");
 
 router.get("/", async (req, res) => {
-  const [clientesRes, trabajosRes, materialesRes, pagosRes] = await Promise.all(
-    [
-      supabase.from("clientes").select("id, nombre, precioHora"),
-      supabase.from("trabajos").select("id, clienteId, fecha, horas, pagado"),
-      supabase.from("materiales").select("id, clienteid, fecha, coste, pagado"),
-      supabase.from("pagos").select("id, clienteId, fecha, cantidad"),
-    ]
-  );
+  // 1. Obtén clientes y precioHora
+  const { data: clientes, error: clientesError } = await supabase
+    .from("clientes")
+    .select("id, nombre, precioHora");
 
-  if (
-    clientesRes.error ||
-    trabajosRes.error ||
-    materialesRes.error ||
-    pagosRes.error
-  ) {
-    return res
-      .status(500)
-      .json({ error: "Error al obtener datos de Supabase" });
+  if (clientesError) {
+    return res.status(500).json({ error: "Error al obtener clientes" });
   }
 
-  const clientes = clientesRes.data;
-  const trabajos = trabajosRes.data;
-  const materiales = materialesRes.data;
-  const pagos = pagosRes.data;
+  // 2. Obtén todas las tareas pendientes de cada cliente
+  const { data: trabajos, error: trabajosError } = await supabase
+    .from("trabajos")
+    .select("id, clienteId, fecha, horas, pagado");
 
+  const { data: materiales, error: materialesError } = await supabase
+    .from("materiales")
+    .select("id, clienteid, fecha, coste, pagado");
+
+  if (trabajosError || materialesError) {
+    return res
+      .status(500)
+      .json({ error: "Error al obtener trabajos o materiales" });
+  }
+
+  // 3. Obtén todas las asignaciones de pagos
+  const { data: asignaciones, error: asignacionesError } = await supabase
+    .from("asignaciones_pago")
+    .select("*");
+
+  if (asignacionesError) {
+    return res.status(500).json({ error: "Error al obtener asignaciones" });
+  }
+
+  // 4. Devuelve el resumen calculando lo que queda pendiente de pagar
   const resumen = clientes.map((cliente) => {
     const precioHora = cliente.precioHora ?? 0;
 
-    const trabajosPendientes = trabajos
+    // Tareas pendientes NO pagadas (por si acaso)
+    const trabajosPendientes = (trabajos || [])
       .filter((t) => t.clienteId === cliente.id && !t.pagado)
       .map((t) => ({
         id: t.id,
@@ -41,7 +51,7 @@ router.get("/", async (req, res) => {
         horas: t.horas,
       }));
 
-    const materialesPendientes = materiales
+    const materialesPendientes = (materiales || [])
       .filter((m) => m.clienteid === cliente.id && !m.pagado)
       .map((m) => ({
         id: m.id,
@@ -50,84 +60,52 @@ router.get("/", async (req, res) => {
         coste: +m.coste.toFixed(2),
       }));
 
-    const tareasPendientes = [
-      ...trabajosPendientes,
-      ...materialesPendientes,
-    ].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    // Suma lo que queda pendiente REALMENTE por pagar usando asignaciones
+    let totalPendiente = 0;
 
-    const pagosCliente = pagos
-      .filter((p) => p.clienteId === cliente.id)
-      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    // Trabajos: cada uno mira en asignaciones_pago cuánto queda por cubrir
+    for (const t of trabajosPendientes) {
+      const asignado = (asignaciones || [])
+        .filter((a) => a.trabajoId === t.id && a.clienteId === cliente.id)
+        .reduce((acc, a) => acc + Number(a.usado), 0);
+      totalPendiente += Math.max(0, +(t.coste - asignado).toFixed(2));
+    }
 
-    let pagosRestantes = pagosCliente.map((p) => ({
-      ...p,
-      restante: Number(p.cantidad),
-    }));
+    // Materiales: igual
+    for (const m of materialesPendientes) {
+      const asignado = (asignaciones || [])
+        .filter((a) => a.materialId === m.id && a.clienteId === cliente.id)
+        .reduce((acc, a) => acc + Number(a.usado), 0);
+      totalPendiente += Math.max(0, +(m.coste - asignado).toFixed(2));
+    }
 
-    let totalAsignado = 0;
-
-    console.log(`\nCliente: ${cliente.nombre}`);
-    tareasPendientes.forEach((tarea, index) => {
-      console.log(
-        `\nTarea ${index + 1} (${tarea.tipo} - ${tarea.fecha}): coste ${
-          tarea.coste
-        }€`
-      );
-      let restante = tarea.coste;
-
-      for (const pago of pagosRestantes) {
-        if (pago.restante <= 0) continue;
-
-        const aplicar = Math.min(pago.restante, restante);
-        if (aplicar > 0) {
-          console.log(
-            `\tPago del ${pago.fecha} - antes: ${pago.restante}€, aplicar: ${aplicar}€`
-          );
-          pago.restante = +(pago.restante - aplicar).toFixed(2);
-          restante = +(restante - aplicar).toFixed(2);
-          totalAsignado += aplicar;
-        }
-
-        if (restante <= 0) break;
-      }
-
-      console.log(`\tRestante sin cubrir: ${restante}€`);
-    });
-
-    const totalHorasPendientes = trabajosPendientes.reduce(
-      (acc, t) => acc + t.horas,
-      0
-    );
-    const totalMaterialesPendientes = materialesPendientes.reduce(
-      (acc, m) => acc + m.coste,
-      0
-    );
-    const totalPendiente = +(
-      totalHorasPendientes * precioHora +
-      totalMaterialesPendientes
-    ).toFixed(2);
-    const deudaReal = Math.max(0, +(totalPendiente - totalAsignado).toFixed(2));
-
-    const pagosUsados = pagosCliente.map((p) => {
-      const original = Number(p.cantidad);
-      const restante =
-        pagosRestantes.find((r) => r.id === p.id)?.restante ?? original;
-      return {
-        id: p.id,
-        fecha: p.fecha,
-        cantidad: original,
-        usado: +(original - restante).toFixed(2),
-      };
-    });
+    // Opcional: muestra resumen de pagos usados
+    const pagosUsados = (asignaciones || [])
+      .filter((a) => a.clienteId === cliente.id)
+      .reduce((acc, a) => {
+        acc[a.pagoId] = (acc[a.pagoId] || 0) + Number(a.usado);
+        return acc;
+      }, {});
+    // Total pagado es la suma de 'usado' en asignaciones
+    const totalPagado = Object.values(pagosUsados).reduce((a, b) => a + b, 0);
 
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
-      totalPagado: totalAsignado,
-      totalHorasPendientes,
-      totalMaterialesPendientes,
-      totalDeuda: deudaReal,
-      pagosUsados,
+      totalPagado,
+      totalHorasPendientes: trabajosPendientes.reduce(
+        (acc, t) => acc + t.horas,
+        0
+      ),
+      totalMaterialesPendientes: materialesPendientes.reduce(
+        (acc, m) => acc + m.coste,
+        0
+      ),
+      totalDeuda: +totalPendiente.toFixed(2),
+      pagosUsados: Object.entries(pagosUsados).map(([id, usado]) => ({
+        id,
+        usado: +usado.toFixed(2),
+      })),
     };
   });
 
