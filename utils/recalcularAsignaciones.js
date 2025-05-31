@@ -84,12 +84,13 @@ async function recalcularAsignacionesCliente(clienteId) {
       if (pago.restante <= 0) continue;
       const aplicar = Math.min(pago.restante, pendiente);
       if (aplicar > 0) {
+        // ...resto igual...
         inserts.push({
-          clienteId,
-          pagoId: pago.id,
-          tipo: tarea.tipo, // "trabajo" o "material"
-          trabajoId: tarea.tipo === "trabajo" ? tarea.id : null,
-          materialId: tarea.tipo === "material" ? tarea.id : null,
+          clienteid,
+          pagoid: pago.id,
+          tipo: tarea.tipo,
+          trabajoid: tarea.tipo === "trabajo" ? tarea.id : null,
+          materialid: tarea.tipo === "material" ? tarea.id : null,
           usado: aplicar,
           fecha_pago: pago.fecha,
           fecha_tarea: tarea.fecha,
