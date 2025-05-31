@@ -5,11 +5,11 @@ async function recalcularAsignacionesCliente(clienteId) {
   console.log("\n---- INICIO RECÁLCULO ASIGNACIONES ----");
   console.log("ClienteId recibido:", clienteId);
 
-  // 1. Borra todas las asignaciones de ese cliente
+  // 1. Borra todas las asignaciones de ese cliente (corregido a clienteid)
   const { error: errDel } = await supabase
     .from("asignaciones_pago")
     .delete()
-    .eq("clienteId", clienteId);
+    .eq("clienteid", clienteId); // <- minúscula como en la tabla
   if (errDel) {
     console.error("Error al borrar asignaciones anteriores:", errDel.message);
     return;
@@ -84,9 +84,20 @@ async function recalcularAsignacionesCliente(clienteId) {
       if (pago.restante <= 0) continue;
       const aplicar = Math.min(pago.restante, pendiente);
       if (aplicar > 0) {
-        // ...resto igual...
+        // Añadimos logs de los valores
+        console.log("Preparando insert:", {
+          clienteid: clienteId,
+          pagoid: pago.id,
+          tipo: tarea.tipo,
+          trabajoid: tarea.tipo === "trabajo" ? tarea.id : null,
+          materialid: tarea.tipo === "material" ? tarea.id : null,
+          usado: aplicar,
+          fecha_pago: pago.fecha,
+          fecha_tarea: tarea.fecha,
+        });
+
         inserts.push({
-          clienteid,
+          clienteid: clienteId,
           pagoid: pago.id,
           tipo: tarea.tipo,
           trabajoid: tarea.tipo === "trabajo" ? tarea.id : null,
@@ -102,11 +113,13 @@ async function recalcularAsignacionesCliente(clienteId) {
     }
   }
 
-  console.log("Inserts a realizar:", inserts);
+  console.log("Intentando insertar en asignaciones_pago:", inserts);
 
   // 4. Inserta todas las asignaciones de golpe (solo si hay)
   if (inserts.length) {
     const result = await supabase.from("asignaciones_pago").insert(inserts);
+    console.log("Resultado del insert:", result);
+
     if (result.error) {
       console.error(
         "Error insertando en asignaciones_pago:",
