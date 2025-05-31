@@ -23,6 +23,22 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Datos de pago no válidos" });
   }
 
+  // --- COMPROBAR SI YA EXISTE PAGO IGUAL ---
+  const { data: pagoExistente, error: errorPagoExistente } = await supabase
+    .from("pagos")
+    .select("id")
+    .eq("clienteId", clienteId)
+    .eq("cantidad", cantidad)
+    .eq("fecha", fecha);
+
+  if (errorPagoExistente) {
+    return res.status(500).json({ error: "Error comprobando duplicados" });
+  }
+  if (pagoExistente && pagoExistente.length > 0) {
+    return res.status(400).json({ error: "Este pago ya existe" });
+  }
+
+  // ---- Aquí sigue tu lógica normal ----
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("nombre")
@@ -50,6 +66,7 @@ router.post("/", async (req, res) => {
   if (error) {
     return res.status(400).json({ error: error.message });
   }
+
   // ⬇️ Recalcular tras insertar
   await recalcularAsignaciones(clienteId);
 
