@@ -17,6 +17,7 @@ router.get("/", async (req, res) => {
     .from("trabajos")
     .select("id, clienteId, fecha, horas, pagado");
 
+  // Materiales: **clienteid** (minúscula)
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
     .select("id, clienteid, fecha, coste, pagado");
@@ -36,7 +37,7 @@ router.get("/", async (req, res) => {
     return res.status(500).json({ error: "Error al obtener asignaciones" });
   }
 
-  // 4. Todos los pagos reales
+  // 4. Todos los pagos
   const { data: pagos, error: pagosError } = await supabase
     .from("pagos")
     .select("id, clienteId, cantidad");
@@ -60,7 +61,7 @@ router.get("/", async (req, res) => {
         horas: t.horas,
       }));
 
-    // Materiales pendientes
+    // Materiales pendientes (usa clienteid en minúscula)
     const materialesPendientes = (materiales || [])
       .filter((m) => m.clienteid === cliente.id && !m.pagado)
       .map((m) => ({
@@ -85,53 +86,51 @@ router.get("/", async (req, res) => {
       totalPendiente += Math.max(0, +(m.coste - asignado).toFixed(2));
     }
 
-    // Resumen pagos usados (solo para info)
+    // Total asignado a tareas completas
+    const totalAsignado = (asignaciones || [])
+      .filter((a) => a.clienteid === cliente.id)
+      .reduce((acc, a) => acc + Number(a.usado), 0);
+
+    // Suma todos los pagos del cliente
+    const totalPagos = (pagos || [])
+      .filter((p) => p.clienteId === cliente.id)
+      .reduce((acc, p) => acc + Number(p.cantidad), 0);
+
+    // Saldo a cuenta (pagos no asignados)
+    const saldoACuenta = totalPagos - totalAsignado;
+
+    // Resumen pagos usados por cada pago (opcional para la tabla de pagos)
     const pagosUsados = (asignaciones || [])
       .filter((a) => a.clienteid === cliente.id)
       .reduce((acc, a) => {
         acc[a.pagoid] = (acc[a.pagoid] || 0) + Number(a.usado);
         return acc;
       }, {});
-    const totalPagado = Object.values(pagosUsados).reduce((a, b) => a + b, 0);
 
-    // NUEVO: Saldo a cuenta (pagos hechos menos lo que se ha asignado realmente)
-    const pagosCliente = (pagos || []).filter(
-      (p) => p.clienteId === cliente.id
-    );
-    const totalPagos = pagosCliente.reduce(
-      (acc, p) => acc + Number(p.cantidad),
-      0
-    );
-    const saldoACuenta = +(totalPagos - totalPagado).toFixed(2);
-
-    // Ajusta la deuda: si hay saldo a cuenta, lo descuenta, pero nunca menos de 0
-    let deudaFinal = +(totalPendiente - saldoACuenta).toFixed(2);
-    if (deudaFinal < 0) deudaFinal = 0;
-
-    // Horas pendientes reales
-    const totalHorasPendientes = trabajosPendientes.reduce((acc, t) => {
-      const asignado = (asignaciones || [])
-        .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
-        .reduce((acc, a) => acc + Number(a.usado), 0);
-
-      const pendienteDinero = Math.max(0, +(t.coste - asignado));
-      const horasPendientes = +(
-        pendienteDinero / (cliente.precioHora || 1)
-      ).toFixed(2);
-      return acc + horasPendientes;
-    }, 0);
+    // Deuda real: lo pendiente menos el saldo a cuenta, nunca negativa
+    const deudaReal = Math.max(0, +(totalPendiente - saldoACuenta).toFixed(2));
 
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
-      totalPagado: +totalPagado.toFixed(2),
-      totalHorasPendientes,
+      totalPagado: +totalAsignado.toFixed(2),
+      totalHorasPendientes: trabajosPendientes.reduce((acc, t) => {
+        // Suma el dinero ya asignado a este trabajo
+        const asignado = (asignaciones || [])
+          .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
+          .reduce((acc, a) => acc + Number(a.usado), 0);
+        const pendienteDinero = Math.max(0, +(t.coste - asignado));
+        const horasPendientes = +(
+          pendienteDinero / (cliente.precioHora || 1)
+        ).toFixed(2);
+        return acc + horasPendientes;
+      }, 0),
       totalMaterialesPendientes: materialesPendientes.reduce(
         (acc, m) => acc + m.coste,
         0
       ),
-      totalDeuda: deudaFinal,
-      saldoACuenta,
+      totalDeuda: deudaReal,
+      saldoACuenta: +saldoACuenta.toFixed(2),
       pagosUsados: Object.entries(pagosUsados).map(([id, usado]) => ({
         id,
         usado: +usado.toFixed(2),
