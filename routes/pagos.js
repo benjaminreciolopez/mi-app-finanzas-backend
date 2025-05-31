@@ -12,9 +12,7 @@ router.get("/", async (req, res) => {
     .select("*")
     .order("fecha", { ascending: false });
 
-  if (error) {
-    return res.status(400).json({ error: error.message });
-  }
+  if (error) return res.status(400).json({ error: error.message });
 
   res.json({ data });
 });
@@ -22,13 +20,6 @@ router.get("/", async (req, res) => {
 // Añadir nuevo pago
 router.post("/", async (req, res) => {
   const { clienteId, cantidad, fecha, observaciones } = req.body;
-
-  console.log("Datos recibidos:", {
-    clienteId,
-    cantidad,
-    fecha,
-    observaciones,
-  });
 
   if (!clienteId || !cantidad || !fecha || isNaN(cantidad) || cantidad <= 0) {
     return res.status(400).json({ error: "Datos de pago no válidos" });
@@ -40,8 +31,6 @@ router.post("/", async (req, res) => {
     .eq("id", clienteId)
     .single();
 
-  console.log("Resultado de búsqueda cliente:", { cliente, errorCliente });
-
   if (errorCliente || !cliente) {
     return res.status(400).json({ error: "Cliente no encontrado" });
   }
@@ -50,7 +39,7 @@ router.post("/", async (req, res) => {
     .from("pagos")
     .insert([
       {
-        clienteId, // <-- asegurarse de que el campo se llama igual en la BBDD
+        clienteId,
         nombre: cliente.nombre,
         cantidad,
         fecha,
@@ -61,9 +50,9 @@ router.post("/", async (req, res) => {
     .single();
 
   if (error) {
-    console.error("Error al insertar el pago:", error.message);
     return res.status(400).json({ error: error.message });
   }
+  // ⬇️ Recalcular tras insertar
   await recalcularAsignacionesCliente(clienteId);
 
   res.json({ id: data.id });
@@ -74,7 +63,7 @@ router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { cantidad, fecha, observaciones } = req.body;
 
-  // Busca el clienteId del pago antes de actualizar
+  // Buscar clienteId antes de actualizar
   const { data: pagoExistente, error: errPago } = await supabase
     .from("pagos")
     .select("clienteId")
@@ -95,6 +84,7 @@ router.put("/:id", async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
+  // ⬇️ Recalcular tras actualizar
   await recalcularAsignacionesCliente(pagoExistente.clienteId);
 
   res.json({ message: "Pago actualizado correctamente" });
@@ -104,7 +94,7 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
-  // Busca primero el clienteId del pago a eliminar
+  // Buscar clienteId antes de eliminar
   const { data: pago, error: errPago } = await supabase
     .from("pagos")
     .select("clienteId")
@@ -121,6 +111,7 @@ router.delete("/:id", async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
+  // ⬇️ Recalcular tras eliminar
   await recalcularAsignacionesCliente(pago.clienteId);
 
   res.json({ message: "Pago eliminado correctamente" });

@@ -6,24 +6,26 @@ async function recalcularAsignacionesCliente(clienteId) {
   console.log("ClienteId recibido:", clienteId);
 
   // 1. Borra todas las asignaciones de ese cliente
-  const { error: errDel } = await supabase
-    .from("asignaciones_pago")
-    .delete()
-    .eq("clienteid", clienteId);
-  if (errDel) {
-    console.error("Error al borrar asignaciones anteriores:", errDel.message);
-    return;
-  } else {
-    console.log("Asignaciones anteriores borradas (si existían)");
-  }
+  await supabase.from("asignaciones_pago").delete().eq("clienteid", clienteId);
 
-  // 2. Trae trabajos y materiales pendientes + pagos del cliente
+  // 2. Marca todos los trabajos y materiales como NO pagados
+  await supabase
+    .from("trabajos")
+    .update({ pagado: false })
+    .eq("clienteId", clienteId);
+
+  await supabase
+    .from("materiales")
+    .update({ pagado: false })
+    .eq("clienteid", clienteId);
+
+  // 3. Trae datos cliente, trabajos, materiales y pagos
   const { data: cliente } = await supabase
     .from("clientes")
     .select("id, precioHora")
     .eq("id", clienteId)
     .single();
-  console.log("Datos cliente:", cliente);
+
   if (!cliente) {
     console.error("No se encontró el cliente.");
     return;
@@ -31,46 +33,42 @@ async function recalcularAsignacionesCliente(clienteId) {
 
   const { data: trabajos } = await supabase
     .from("trabajos")
-    .select("id, clienteId, fecha, horas, pagado") // Usa "coste" si lo tienes guardado, para evitar errores históricos
+    .select("id, clienteId, fecha, horas, pagado")
     .eq("clienteId", clienteId);
 
   const { data: materiales } = await supabase
     .from("materiales")
-    .select("id, clienteId, fecha, coste, pagado")
-    .eq("clienteId", clienteId);
+    .select("id, clienteid, fecha, coste, pagado")
+    .eq("clienteid", clienteId);
 
   const { data: pagos } = await supabase
     .from("pagos")
     .select("id, cantidad, fecha")
     .eq("clienteId", clienteId);
 
-  // Agrupa tareas pendientes (trabajos y materiales NO pagados)
+  // 4. Agrupa tareas pendientes (trabajos y materiales NO pagados)
   const tareasPendientes = [
-    ...(trabajos || [])
-      .filter((t) => !t.pagado)
-      .map((t) => ({
-        id: t.id,
-        tipo: "trabajo",
-        fecha: t.fecha,
-        coste: t.horas * cliente.precioHora, // Mejor si tienes t.coste histórico
-      })),
-    ...(materiales || [])
-      .filter((m) => !m.pagado)
-      .map((m) => ({
-        id: m.id,
-        tipo: "material",
-        fecha: m.fecha,
-        coste: m.coste,
-      })),
+    ...(trabajos || []).map((t) => ({
+      id: t.id,
+      tipo: "trabajo",
+      fecha: t.fecha,
+      coste: t.horas * cliente.precioHora,
+    })),
+    ...(materiales || []).map((m) => ({
+      id: m.id,
+      tipo: "material",
+      fecha: m.fecha,
+      coste: m.coste,
+    })),
   ].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-  // Ordena pagos (y filtra negativos si quieres)
+  // 5. Ordena pagos (y filtra negativos si quieres)
   let pagosRestantes = (pagos || [])
     .filter((p) => p.cantidad > 0)
     .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
     .map((p) => ({ ...p, restante: Number(p.cantidad) }));
 
-  // 3. Asignar pagos a tareas y preparar inserts
+  // 6. Asignar pagos a tareas y preparar inserts
   let inserts = [];
   for (const tarea of tareasPendientes) {
     let pendiente = tarea.coste;
@@ -95,7 +93,7 @@ async function recalcularAsignacionesCliente(clienteId) {
     }
   }
 
-  // 4. Inserta todas las asignaciones de golpe (solo si hay)
+  // 7. Inserta todas las asignaciones de golpe (solo si hay)
   if (inserts.length) {
     const result = await supabase.from("asignaciones_pago").insert(inserts);
     if (result.error) {
@@ -104,17 +102,39 @@ async function recalcularAsignacionesCliente(clienteId) {
         result.error.message,
         result.error.details
       );
-    } else {
-      console.log(
-        `Insertadas ${inserts.length} asignaciones en asignaciones_pago.`
-      );
     }
-  } else {
-    console.log("No hay asignaciones para insertar");
   }
-  console.log("---- FIN RECÁLCULO ASIGNACIONES ----\n");
 
-  return inserts.length; // <-- Si quieres saber cuántas asignaciones se han hecho
+  // 8. Marca como pagados los trabajos/materiales TOTALMENTE cubiertos
+  // Trae asignaciones frescas tras el insert:
+  const { data: nuevasAsignaciones } = await supabase
+    .from("asignaciones_pago")
+    .select("*")
+    .eq("clienteid", clienteId);
+
+  // Trabajos
+  for (const t of trabajos || []) {
+    const asignado = (nuevasAsignaciones || [])
+      .filter((a) => a.trabajoid === t.id)
+      .reduce((acc, a) => acc + Number(a.usado), 0);
+    const coste = t.horas * cliente.precioHora;
+    if (asignado >= coste - 0.01) {
+      // margen de redondeo
+      await supabase.from("trabajos").update({ pagado: true }).eq("id", t.id);
+    }
+  }
+  // Materiales
+  for (const m of materiales || []) {
+    const asignado = (nuevasAsignaciones || [])
+      .filter((a) => a.materialid === m.id)
+      .reduce((acc, a) => acc + Number(a.usado), 0);
+    if (asignado >= m.coste - 0.01) {
+      await supabase.from("materiales").update({ pagado: true }).eq("id", m.id);
+    }
+  }
+
+  console.log("---- FIN RECÁLCULO ASIGNACIONES ----\n");
+  return inserts.length;
 }
 
 module.exports = { recalcularAsignacionesCliente };
