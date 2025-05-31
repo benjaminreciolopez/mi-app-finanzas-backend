@@ -1,9 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
-const {
-  recalcularAsignacionesCliente,
-} = require("../utils/recalcularAsignacionesCliente");
+const { recalcularAsignaciones } = require("../utils/recalcularAsignaciones");
 
 // Obtener todos los trabajos
 router.get("/", async (req, res) => {
@@ -37,7 +35,7 @@ router.post("/", async (req, res) => {
 
   // ⬇️ Recalcular asignaciones tras añadir el trabajo
   if (clienteId) {
-    await recalcularAsignacionesCliente(clienteId);
+    await recalcularAsignaciones(clienteId);
   }
 
   res.json({ id: data.id });
@@ -67,7 +65,7 @@ router.put("/:id", async (req, res) => {
 
   // ⬇️ Recalcular asignaciones tras la actualización
   if (clienteId) {
-    await recalcularAsignacionesCliente(clienteId);
+    await recalcularAsignaciones(clienteId);
   }
 
   // Si se marcó como pagado, actualizar resumen mensual
@@ -95,7 +93,7 @@ router.delete("/:id", async (req, res) => {
 
   // ⬇️ Recalcular asignaciones tras eliminar el trabajo
   if (trabajo?.clienteId) {
-    await recalcularAsignacionesCliente(trabajo.clienteId);
+    await recalcularAsignaciones(trabajo.clienteId);
   }
 
   res.json({ deleted: true });

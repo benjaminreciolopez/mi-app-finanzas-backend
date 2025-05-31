@@ -2,9 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient"); // ✅ sin llaves
-const {
-  recalcularAsignacionesCliente,
-} = require("../utils/recalcularAsignacionesCliente");
+const { recalcularAsignaciones } = require("../utils/recalcularAsignaciones");
 
 // ✅ Obtener todos los materiales
 router.get("/", async (req, res) => {
@@ -31,7 +29,7 @@ router.post("/", async (req, res) => {
 
   // ⬇️ Recalcular asignaciones tras añadir el material
   if (clienteId) {
-    await recalcularAsignacionesCliente(clienteId);
+    await recalcularAsignaciones(clienteId);
   }
 
   res.json({ message: "Material añadido", id: data[0]?.id });
@@ -59,7 +57,7 @@ router.put("/:id", async (req, res) => {
     realClienteId = material?.clienteId;
   }
   if (realClienteId) {
-    await recalcularAsignacionesCliente(realClienteId);
+    await recalcularAsignaciones(realClienteId);
   }
 
   res.json({ message: "Material actualizado correctamente" });

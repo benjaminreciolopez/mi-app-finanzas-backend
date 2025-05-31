@@ -18,5 +18,4 @@ router.get("/:clienteId", async (req, res) => {
   res.json({ data }); // Uniformiza la respuesta
 });
 
-// **ESTA LÍNEA ES OBLIGATORIA:**
 module.exports = router;

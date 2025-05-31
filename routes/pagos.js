@@ -1,9 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
-const {
-  recalcularAsignacionesCliente,
-} = require("../utils/recalcularAsignaciones");
+const { recalcularAsignaciones } = require("../utils/recalcularAsignaciones");
 
 // Obtener todos los pagos
 router.get("/", async (req, res) => {
@@ -53,7 +51,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
   // ⬇️ Recalcular tras insertar
-  await recalcularAsignacionesCliente(clienteId);
+  await recalcularAsignaciones(clienteId);
 
   res.json({ id: data.id });
 });
@@ -85,7 +83,7 @@ router.put("/:id", async (req, res) => {
   }
 
   // ⬇️ Recalcular tras actualizar
-  await recalcularAsignacionesCliente(pagoExistente.clienteId);
+  await recalcularAsignaciones(pagoExistente.clienteId);
 
   res.json({ message: "Pago actualizado correctamente" });
 });
@@ -112,7 +110,7 @@ router.delete("/:id", async (req, res) => {
   }
 
   // ⬇️ Recalcular tras eliminar
-  await recalcularAsignacionesCliente(pago.clienteId);
+  await recalcularAsignaciones(pago.clienteId);
 
   res.json({ message: "Pago eliminado correctamente" });
 });

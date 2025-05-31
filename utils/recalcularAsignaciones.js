@@ -1,6 +1,6 @@
 const supabase = require("../supabaseClient");
 
-async function recalcularAsignacionesCliente(clienteId) {
+async function recalcularAsignaciones(clienteId) {
   console.log("\n---- INICIO RECÁLCULO ASIGNACIONES ----");
   console.log("ClienteId recibido:", clienteId);
 
@@ -168,4 +168,4 @@ async function actualizarPagadosCliente(clienteId, supabase) {
   }
 }
 
-module.exports = { recalcularAsignacionesCliente };
+module.exports = { recalcularAsignaciones };
