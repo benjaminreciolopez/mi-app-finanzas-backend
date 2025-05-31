@@ -9,7 +9,7 @@ async function recalcularAsignacionesCliente(clienteId) {
   const { error: errDel } = await supabase
     .from("asignaciones_pago")
     .delete()
-    .eq("clienteId", clienteId);
+    .eq("clienteid", clienteId);
   if (errDel) {
     console.error("Error al borrar asignaciones anteriores:", errDel.message);
     return;
@@ -79,11 +79,11 @@ async function recalcularAsignacionesCliente(clienteId) {
       const aplicar = Math.min(pago.restante, pendiente);
       if (aplicar > 0) {
         inserts.push({
-          clienteId: clienteId,
-          pagoId: pago.id,
+          clienteid: clienteId,
+          pagoid: pago.id,
           tipo: tarea.tipo,
-          trabajoId: tarea.tipo === "trabajo" ? tarea.id : null,
-          materialId: tarea.tipo === "material" ? tarea.id : null,
+          trabajoid: tarea.tipo === "trabajo" ? tarea.id : null,
+          materialid: tarea.tipo === "material" ? tarea.id : null,
           usado: aplicar,
           fecha_pago: pago.fecha,
           fecha_tarea: tarea.fecha,
