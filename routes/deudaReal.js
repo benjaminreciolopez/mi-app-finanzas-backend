@@ -15,12 +15,12 @@ router.get("/", async (req, res) => {
   // 2. Trabajos pendientes de cada cliente
   const { data: trabajos, error: trabajosError } = await supabase
     .from("trabajos")
-    .select("id, clienteId, fecha, horas, pagado");
+    .select("id, clienteId, fecha, horas, cuadrado");
 
   // Materiales
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
-    .select("id, clienteid, fecha, coste, pagado");
+    .select("id, clienteid, fecha, coste, cuadrado");
 
   if (trabajosError || materialesError) {
     return res
@@ -52,7 +52,7 @@ router.get("/", async (req, res) => {
 
     // Trabajos pendientes
     const trabajosPendientes = (trabajos || [])
-      .filter((t) => t.clienteId === cliente.id && !t.pagado)
+      .filter((t) => t.clienteId === cliente.id && t.cuadrado !== 1)
       .map((t) => ({
         id: t.id,
         tipo: "trabajo",
@@ -63,7 +63,7 @@ router.get("/", async (req, res) => {
 
     // Materiales pendientes
     const materialesPendientes = (materiales || [])
-      .filter((m) => m.clienteid === cliente.id && !m.pagado)
+      .filter((m) => m.clienteid === cliente.id && m.cuadrado !== 1)
       .map((m) => ({
         id: m.id,
         tipo: "material",

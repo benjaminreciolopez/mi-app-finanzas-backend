@@ -20,6 +20,7 @@ router.get("/", async (req, res) => {
 });
 
 // Cerrar mes actual y guardar total
+// Cerrar mes actual y guardar total (incluye trabajos y materiales saldados)
 router.post("/cerrar-mes", async (req, res) => {
   const fecha = new Date();
   const año = fecha.getFullYear();
@@ -40,24 +41,29 @@ router.post("/cerrar-mes", async (req, res) => {
     return res.status(400).json({ error: "Este mes ya ha sido cerrado." });
   }
 
-  // 2. Obtén trabajos pagados del mes
-  const { data: trabajos, error } = await supabase
+  // 2. Trabajos saldados (pagado=1 o cuadrado=1)
+  const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
-    .select("horas, nombre")
-    .eq("pagado", 1)
+    .select("horas, nombre, pagado, cuadrado, fecha")
+    .or("pagado.eq.1,cuadrado.eq.1")
     .gte("fecha", mesInicio)
     .lt("fecha", mesFin);
 
-  if (error) return res.status(400).json({ error: error.message });
+  // 3. Materiales saldados (pagado=1 o cuadrado=1)
+  const { data: materiales, error: errorMateriales } = await supabase
+    .from("materiales")
+    .select("coste, pagado, cuadrado, fecha")
+    .or("pagado.eq.1,cuadrado.eq.1")
+    .gte("fecha", mesInicio)
+    .lt("fecha", mesFin);
 
-  if (!trabajos || trabajos.length === 0) {
-    return res.json({
-      message: "No hay trabajos pagados este mes.",
-      totalCerrado: 0,
-    });
+  if (errorTrabajos || errorMateriales) {
+    return res
+      .status(400)
+      .json({ error: "Error al obtener trabajos o materiales" });
   }
 
-  // 3. Prepara mapa de precios por cliente
+  // 4. Prepara mapa de precios por cliente
   const clientesMap = {};
   const { data: clientes } = await supabase
     .from("clientes")
@@ -73,13 +79,20 @@ router.post("/cerrar-mes", async (req, res) => {
     clientesMap[c.nombre] = c.precioHora;
   });
 
-  // 4. Calcula el total del mes
-  const total = trabajos.reduce((acc, t) => {
+  // 5. Calcula el total del mes (trabajos + materiales)
+  const totalTrabajos = (trabajos || []).reduce((acc, t) => {
     const precio = clientesMap[t.nombre] || 0;
     return acc + t.horas * precio;
   }, 0);
 
-  // 5. Inserta el resumen mensual
+  const totalMateriales = (materiales || []).reduce(
+    (acc, m) => acc + (m.coste || 0),
+    0
+  );
+
+  const total = totalTrabajos + totalMateriales;
+
+  // 6. Inserta el resumen mensual
   const { error: insertError } = await supabase
     .from("resumen_mensual")
     .insert([{ año, mes, total }]);

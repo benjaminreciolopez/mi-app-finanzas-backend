@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 const { recalcularAsignaciones } = require("../utils/recalcularAsignaciones");
+const {
+  actualizarResumenMensualTrabajo,
+} = require("../utils/actualizarResumenMensual");
 
 // Obtener todos los trabajos
 router.get("/", async (req, res) => {
@@ -20,11 +23,18 @@ router.get("/", async (req, res) => {
 
 // Añadir nuevo trabajo y recalcular asignaciones
 router.post("/", async (req, res) => {
-  const { clienteId, nombre, fecha, horas, pagado = 0 } = req.body;
+  const {
+    clienteId,
+    nombre,
+    fecha,
+    horas,
+    pagado = 0,
+    cuadrado = 0,
+  } = req.body;
 
   const { data, error } = await supabase
     .from("trabajos")
-    .insert([{ clienteId, nombre, fecha, horas, pagado }])
+    .insert([{ clienteId, nombre, fecha, horas, pagado, cuadrado }])
     .select("id") // Para devolver el id del nuevo trabajo
     .single();
 
@@ -45,17 +55,18 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
 
-  // Buscar el clienteId si no viene en el body
-  let clienteId = req.body.clienteId;
-  if (!clienteId) {
-    const { data: trabajo } = await supabase
-      .from("trabajos")
-      .select("clienteId")
-      .eq("id", id)
-      .single();
-    clienteId = trabajo?.clienteId;
+  // Obtener el estado ANTERIOR del trabajo (antes de actualizar)
+  const { data: trabajoAntes, error: errorTrabajo } = await supabase
+    .from("trabajos")
+    .select("fecha, horas, pagado, cuadrado, clienteId")
+    .eq("id", id)
+    .single();
+
+  if (errorTrabajo || !trabajoAntes) {
+    return res.status(404).json({ error: "Trabajo no encontrado" });
   }
 
+  // Actualizar el trabajo con los datos nuevos
   const { error } = await supabase
     .from("trabajos")
     .update(req.body)
@@ -63,14 +74,55 @@ router.put("/:id", async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
 
-  // ⬇️ Recalcular asignaciones tras la actualización
+  // Recalcular asignaciones si hay cliente
+  const clienteId = req.body.clienteId || trabajoAntes.clienteId;
   if (clienteId) {
     await recalcularAsignaciones(clienteId);
   }
 
-  // Si se marcó como pagado, actualizar resumen mensual
-  if (req.body.pagado === 1) {
-    await actualizarResumenMensual(id);
+  // Buscar el estado NUEVO (después de actualizar)
+  const pagadoAntes = trabajoAntes.pagado;
+  const cuadradoAntes = trabajoAntes.cuadrado;
+  const pagadoAhora =
+    req.body.pagado !== undefined ? req.body.pagado : pagadoAntes;
+  const cuadradoAhora =
+    req.body.cuadrado !== undefined ? req.body.cuadrado : cuadradoAntes;
+
+  // Si hay un cambio de estado pagado/cuadrado, suma o resta al resumen mensual
+  if (pagadoAntes !== pagadoAhora || cuadradoAntes !== cuadradoAhora) {
+    // Obtener precioHora del cliente
+    const { data: cliente } = await supabase
+      .from("clientes")
+      .select("precioHora")
+      .eq("id", clienteId)
+      .single();
+
+    if (cliente) {
+      // Si ahora está pagado/cuadrado y antes no, SUMA
+      if (
+        (pagadoAhora === 1 || cuadradoAhora === 1) &&
+        !(pagadoAntes === 1 || cuadradoAntes === 1)
+      ) {
+        await actualizarResumenMensualTrabajo({
+          fecha: trabajoAntes.fecha,
+          horas: trabajoAntes.horas,
+          precioHora: cliente.precioHora,
+          operacion: "sumar",
+        });
+      }
+      // Si ahora NO está pagado/cuadrado y antes sí, RESTA
+      else if (
+        !(pagadoAhora === 1 || cuadradoAhora === 1) &&
+        (pagadoAntes === 1 || cuadradoAntes === 1)
+      ) {
+        await actualizarResumenMensualTrabajo({
+          fecha: trabajoAntes.fecha,
+          horas: trabajoAntes.horas,
+          precioHora: cliente.precioHora,
+          operacion: "restar",
+        });
+      }
+    }
   }
 
   res.json({ updated: true });
@@ -80,74 +132,35 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
 
-  // Buscar el clienteId del trabajo a eliminar
+  // Busca trabajo antes de borrarlo
   const { data: trabajo } = await supabase
     .from("trabajos")
-    .select("clienteId")
+    .select("fecha, horas, pagado, cuadrado, clienteId")
     .eq("id", id)
     .single();
 
+  // Elimina el trabajo
   const { error } = await supabase.from("trabajos").delete().eq("id", id);
-
   if (error) return res.status(400).json({ error: error.message });
 
-  // ⬇️ Recalcular asignaciones tras eliminar el trabajo
-  if (trabajo?.clienteId) {
-    await recalcularAsignaciones(trabajo.clienteId);
+  // Si estaba pagado/cuadrado, resta del resumen
+  if (trabajo && (trabajo.pagado === 1 || trabajo.cuadrado === 1)) {
+    const { data: cliente } = await supabase
+      .from("clientes")
+      .select("precioHora")
+      .eq("id", trabajo.clienteId)
+      .single();
+    if (cliente) {
+      await actualizarResumenMensualTrabajo({
+        fecha: trabajo.fecha,
+        horas: trabajo.horas,
+        precioHora: cliente.precioHora,
+        operacion: "restar",
+      });
+    }
   }
 
   res.json({ deleted: true });
 });
-
-// Función para actualizar resumen mensual en Supabase
-async function actualizarResumenMensual(trabajoId) {
-  const { data: trabajo, error: errorTrabajo } = await supabase
-    .from("trabajos")
-    .select("fecha, horas, nombre")
-    .eq("id", trabajoId)
-    .single();
-
-  if (errorTrabajo || !trabajo) {
-    console.error("❌ Error obteniendo trabajo:", errorTrabajo?.message);
-    return;
-  }
-
-  const { data: cliente, error: errorCliente } = await supabase
-    .from("clientes")
-    .select("precioHora")
-    .eq("nombre", trabajo.nombre)
-    .single();
-
-  if (errorCliente || !cliente) {
-    console.error("❌ Error obteniendo cliente:", errorCliente?.message);
-    return;
-  }
-
-  const fecha = new Date(trabajo.fecha);
-  const año = fecha.getFullYear();
-  const mes = fecha.getMonth() + 1;
-  const total = trabajo.horas * cliente.precioHora;
-
-  const { data: resumen, error: errorResumen } = await supabase
-    .from("resumen_mensual")
-    .select("id, total")
-    .eq("año", año)
-    .eq("mes", mes)
-    .single();
-
-  if (errorResumen && errorResumen.code !== "PGRST116") {
-    console.error("❌ Error comprobando resumen:", errorResumen.message);
-    return;
-  }
-
-  if (resumen) {
-    await supabase
-      .from("resumen_mensual")
-      .update({ total: resumen.total + total })
-      .eq("id", resumen.id);
-  } else {
-    await supabase.from("resumen_mensual").insert([{ año, mes, total }]);
-  }
-}
 
 module.exports = router;

@@ -37,12 +37,12 @@ async function recalcularAsignaciones(clienteId) {
 
   const { data: trabajos } = await supabase
     .from("trabajos")
-    .select("id, clienteId, fecha, horas, pagado")
+    .select("id, clienteId, fecha, horas, pagado, cuadrado")
     .eq("clienteId", clienteId);
 
   const { data: materiales } = await supabase
     .from("materiales")
-    .select("id, clienteId, fecha, coste, pagado")
+    .select("id, clienteId, fecha, coste, pagado, cuadrado")
     .eq("clienteId", clienteId);
 
   const { data: pagos } = await supabase
@@ -53,7 +53,7 @@ async function recalcularAsignaciones(clienteId) {
   // 3. Agrupa tareas pendientes (solo NO pagados)
   const tareasPendientes = [
     ...(trabajos || [])
-      .filter((t) => !t.pagado)
+      .filter((t) => t.cuadrado !== 1)
       .map((t) => ({
         id: t.id,
         tipo: "trabajo",
@@ -61,7 +61,7 @@ async function recalcularAsignaciones(clienteId) {
         coste: t.horas * cliente.precioHora,
       })),
     ...(materiales || [])
-      .filter((m) => !m.pagado)
+      .filter((t) => t.cuadrado !== 1)
       .map((m) => ({
         id: m.id,
         tipo: "material",
@@ -130,7 +130,7 @@ async function recalcularAsignaciones(clienteId) {
 async function actualizarPagadosCliente(clienteId, supabase) {
   const { data: trabajos } = await supabase
     .from("trabajos")
-    .select("id, horas, pagado")
+    .select("id, horas, pagado, cuadrado") // ← añadido cuadrado
     .eq("clienteId", clienteId);
 
   const { data: cliente } = await supabase
@@ -152,16 +152,19 @@ async function actualizarPagadosCliente(clienteId, supabase) {
       .reduce((acc, a) => acc + Number(a.usado), 0);
     const coste = t.horas * cliente.precioHora;
     const pagado = asignado >= coste ? 1 : 0;
-    // Solo actualiza si ha cambiado
-    if (t.pagado !== pagado) {
-      await supabase.from("trabajos").update({ pagado }).eq("id", t.id);
+    const cuadrado = pagado; // Ahora van de la mano (puedes personalizarlo si algún día quieres lógica diferente)
+    if (t.pagado !== pagado || t.cuadrado !== cuadrado) {
+      await supabase
+        .from("trabajos")
+        .update({ pagado, cuadrado })
+        .eq("id", t.id);
     }
   }
 
   // Igual para materiales
   const { data: materiales } = await supabase
     .from("materiales")
-    .select("id, coste, pagado")
+    .select("id, coste, pagado, cuadrado") // ← añadido cuadrado
     .eq("clienteid", clienteId);
 
   for (const m of materiales) {
@@ -169,8 +172,42 @@ async function actualizarPagadosCliente(clienteId, supabase) {
       .filter((a) => a.materialid === m.id)
       .reduce((acc, a) => acc + Number(a.usado), 0);
     const pagado = asignado >= m.coste ? 1 : 0;
-    if (m.pagado !== pagado) {
-      await supabase.from("materiales").update({ pagado }).eq("id", m.id);
+    const cuadrado = pagado;
+    if (m.pagado !== pagado || m.cuadrado !== cuadrado) {
+      await supabase
+        .from("materiales")
+        .update({ pagado, cuadrado })
+        .eq("id", m.id);
+    }
+  }
+  // Para cada asignación, si el total usado para ese trabajo/material cubre el coste, pon cuadrado=1
+  for (const a of asignaciones) {
+    if (a.trabajoid) {
+      const coste =
+        trabajos.find((t) => t.id === a.trabajoid)?.horas * cliente.precioHora;
+      const totalAsignado = (asignaciones || [])
+        .filter((aa) => aa.trabajoid === a.trabajoid)
+        .reduce((acc, aa) => acc + Number(aa.usado), 0);
+      const cuadrado = totalAsignado >= coste ? 1 : 0;
+      if (a.cuadrado !== cuadrado) {
+        await supabase
+          .from("asignaciones_pago")
+          .update({ cuadrado })
+          .eq("id", a.id);
+      }
+    }
+    if (a.materialid) {
+      const coste = materiales.find((m) => m.id === a.materialid)?.coste;
+      const totalAsignado = (asignaciones || [])
+        .filter((aa) => aa.materialid === a.materialid)
+        .reduce((acc, aa) => acc + Number(aa.usado), 0);
+      const cuadrado = totalAsignado >= coste ? 1 : 0;
+      if (a.cuadrado !== cuadrado) {
+        await supabase
+          .from("asignaciones_pago")
+          .update({ cuadrado })
+          .eq("id", a.id);
+      }
     }
   }
 }
