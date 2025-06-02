@@ -44,10 +44,6 @@ router.post("/", async (req, res) => {
   }
 
   // ⬇️ Recalcular asignaciones tras añadir el trabajo
-  if (clienteId) {
-    await recalcularAsignaciones(clienteId);
-  }
-
   res.json({ id: data.id });
 });
 

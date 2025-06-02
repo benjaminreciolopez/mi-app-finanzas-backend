@@ -217,7 +217,6 @@ router.put("/:id", async (req, res) => {
     realClienteId = material?.clienteId;
   }
   if (realClienteId) {
-    await recalcularAsignaciones(realClienteId);
     const resumen = await getResumenCliente(realClienteId);
     return res.json({ message: "Material actualizado correctamente", resumen });
   }

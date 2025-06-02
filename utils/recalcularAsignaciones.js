@@ -1,4 +1,3 @@
-// backend/utils/recalcularAsignaciones.js
 const supabase = require("../supabaseClient");
 
 /**
@@ -9,9 +8,6 @@ const supabase = require("../supabaseClient");
  * - No cambia trabajos pagados a pendientes, salvo si ya no tienen suficiente asignado.
  */
 async function recalcularAsignaciones(clienteId) {
-  console.log("\n---- INICIO RECÁLCULO ASIGNACIONES ----");
-  console.log("ClienteId recibido:", clienteId);
-
   // 1. Borra todas las asignaciones de ese cliente
   const { error: errDel } = await supabase
     .from("asignaciones_pago")
@@ -20,8 +16,6 @@ async function recalcularAsignaciones(clienteId) {
   if (errDel) {
     console.error("Error al borrar asignaciones anteriores:", errDel.message);
     return;
-  } else {
-    console.log("Asignaciones anteriores borradas (si existían)");
   }
 
   // 2. Trae datos necesarios
@@ -50,7 +44,7 @@ async function recalcularAsignaciones(clienteId) {
     .select("id, cantidad, fecha")
     .eq("clienteId", clienteId);
 
-  // 3. Agrupa tareas pendientes (solo NO pagados)
+  // 3. Agrupa tareas pendientes (solo NO pagados/cuadrados)
   const tareasPendientes = [
     ...(trabajos || [])
       .filter((t) => t.cuadrado !== 1)
@@ -61,7 +55,7 @@ async function recalcularAsignaciones(clienteId) {
         coste: t.horas * cliente.precioHora,
       })),
     ...(materiales || [])
-      .filter((t) => t.cuadrado !== 1)
+      .filter((m) => m.cuadrado !== 1)
       .map((m) => ({
         id: m.id,
         tipo: "material",
@@ -98,7 +92,6 @@ async function recalcularAsignaciones(clienteId) {
       }
       if (pendiente <= 0) break;
     }
-    // Si pendiente > 0, quedará como deuda/horas pendientes en el resumen
   }
 
   // 5. Inserta asignaciones de golpe
@@ -110,27 +103,20 @@ async function recalcularAsignaciones(clienteId) {
         result.error.message,
         result.error.details
       );
-    } else {
-      console.log(
-        `Insertadas ${inserts.length} asignaciones en asignaciones_pago.`
-      );
     }
-  } else {
-    console.log("No hay asignaciones para insertar");
   }
 
-  // 6. Marca pagados solo los cubiertos realmente
+  // 6. Marca pagados/cuadrados solo los cubiertos realmente
   await actualizarPagadosCliente(clienteId, supabase);
 
-  console.log("---- FIN RECÁLCULO ASIGNACIONES ----\n");
   return { asignaciones: inserts.length };
 }
 
-// ---- AUX: Marca como pagado solo si tiene todo cubierto, si no lo deja pendiente
+// ---- AUX: Marca como pagado/cuadrado solo si tiene todo cubierto, si no lo deja pendiente
 async function actualizarPagadosCliente(clienteId, supabase) {
   const { data: trabajos } = await supabase
     .from("trabajos")
-    .select("id, horas, pagado, cuadrado") // ← añadido cuadrado
+    .select("id, horas, pagado, cuadrado")
     .eq("clienteId", clienteId);
 
   const { data: cliente } = await supabase
@@ -146,67 +132,80 @@ async function actualizarPagadosCliente(clienteId, supabase) {
     .select("*")
     .eq("clienteid", clienteId);
 
+  const { data: materiales } = await supabase
+    .from("materiales")
+    .select("id, coste, pagado, cuadrado")
+    .eq("clienteId", clienteId);
+
+  // Trabajos
   for (const t of trabajos) {
     const asignado = (asignaciones || [])
       .filter((a) => a.trabajoid === t.id)
       .reduce((acc, a) => acc + Number(a.usado), 0);
     const coste = t.horas * cliente.precioHora;
     const pagado = asignado >= coste ? 1 : 0;
-    const cuadrado = pagado; // Ahora van de la mano (puedes personalizarlo si algún día quieres lógica diferente)
+    const cuadrado = pagado;
     if (t.pagado !== pagado || t.cuadrado !== cuadrado) {
-      await supabase
+      const { error } = await supabase
         .from("trabajos")
         .update({ pagado, cuadrado })
         .eq("id", t.id);
+      if (error)
+        console.error("Error actualizando trabajo:", t.id, error.message);
     }
   }
 
-  // Igual para materiales
-  const { data: materiales } = await supabase
-    .from("materiales")
-    .select("id, coste, pagado, cuadrado") // ← añadido cuadrado
-    .eq("clienteid", clienteId);
-
-  for (const m of materiales) {
+  // Materiales
+  for (const m of materiales || []) {
     const asignado = (asignaciones || [])
       .filter((a) => a.materialid === m.id)
       .reduce((acc, a) => acc + Number(a.usado), 0);
     const pagado = asignado >= m.coste ? 1 : 0;
     const cuadrado = pagado;
     if (m.pagado !== pagado || m.cuadrado !== cuadrado) {
-      await supabase
+      const { error } = await supabase
         .from("materiales")
         .update({ pagado, cuadrado })
         .eq("id", m.id);
+      if (error)
+        console.error("Error actualizando material:", m.id, error.message);
     }
   }
-  // Para cada asignación, si el total usado para ese trabajo/material cubre el coste, pon cuadrado=1
-  for (const a of asignaciones) {
+
+  // Asignaciones
+  for (const a of asignaciones || []) {
     if (a.trabajoid) {
-      const coste =
-        trabajos.find((t) => t.id === a.trabajoid)?.horas * cliente.precioHora;
+      const trabajo = trabajos.find((t) => t.id === a.trabajoid);
+      if (!trabajo) continue;
+      const coste = trabajo.horas * cliente.precioHora;
       const totalAsignado = (asignaciones || [])
         .filter((aa) => aa.trabajoid === a.trabajoid)
         .reduce((acc, aa) => acc + Number(aa.usado), 0);
       const cuadrado = totalAsignado >= coste ? 1 : 0;
       if (a.cuadrado !== cuadrado) {
-        await supabase
+        const { error } = await supabase
           .from("asignaciones_pago")
           .update({ cuadrado })
           .eq("id", a.id);
+        if (error)
+          console.error("Error actualizando asignacion:", a.id, error.message);
       }
     }
     if (a.materialid) {
-      const coste = materiales.find((m) => m.id === a.materialid)?.coste;
+      const material = (materiales || []).find((m) => m.id === a.materialid);
+      if (!material) continue;
+      const coste = material.coste;
       const totalAsignado = (asignaciones || [])
         .filter((aa) => aa.materialid === a.materialid)
         .reduce((acc, aa) => acc + Number(aa.usado), 0);
       const cuadrado = totalAsignado >= coste ? 1 : 0;
       if (a.cuadrado !== cuadrado) {
-        await supabase
+        const { error } = await supabase
           .from("asignaciones_pago")
           .update({ cuadrado })
           .eq("id", a.id);
+        if (error)
+          console.error("Error actualizando asignacion:", a.id, error.message);
       }
     }
   }
