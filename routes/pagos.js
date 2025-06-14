@@ -148,7 +148,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Este pago ya existe" });
   }
 
-  // ---- Aquí sigue tu lógica normal ----
+  // Obtener nombre del cliente
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("nombre")
@@ -159,6 +159,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Cliente no encontrado" });
   }
 
+  // Insertar nuevo pago
   const { data, error } = await supabase
     .from("pagos")
     .insert([
@@ -177,70 +178,9 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
-  // ⬇️ Recalcular tras insertar
-  await recalcularAsignaciones(clienteId);
-
+  // Solo devolvemos el resumen, sin asignar nada
   const resumen = await getResumenCliente(clienteId);
-
   res.json({ id: data?.id, message: "Pago añadido correctamente", resumen });
-});
-
-// Actualizar un pago
-router.put("/:id", async (req, res) => {
-  const { id } = req.params;
-  const { cantidad, fecha, observaciones } = req.body;
-
-  // Buscar clienteId antes de actualizar
-  const { data: pagoExistente, error: errPago } = await supabase
-    .from("pagos")
-    .select("clienteId")
-    .eq("id", id)
-    .single();
-
-  if (errPago || !pagoExistente) {
-    return res.status(404).json({ error: "Pago no encontrado" });
-  }
-
-  const { error, data } = await supabase
-    .from("pagos")
-    .update({ cantidad, fecha, observaciones })
-    .eq("id", id)
-    .select();
-
-  if (error) {
-    return res.status(400).json({ error: error.message });
-  }
-
-  // ⬇️ Recalcular tras actualizar
-  await recalcularAsignaciones(pagoExistente.clienteId);
-  const resumen = await getResumenCliente(pagoExistente.clienteId);
-  res.json({ message: "Pago actualizado correctamente", resumen });
-});
-// Eliminar un pago
-router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
-
-  // Buscar clienteId antes de eliminar
-  const { data: pago, error: errPago } = await supabase
-    .from("pagos")
-    .select("clienteId")
-    .eq("id", id)
-    .single();
-
-  if (errPago || !pago) {
-    return res.status(404).json({ error: "Pago no encontrado" });
-  }
-
-  const { error } = await supabase.from("pagos").delete().eq("id", id);
-
-  if (error) {
-    return res.status(400).json({ error: error.message });
-  }
-
-  // ⬇️ Recalcular tras eliminar
-  await recalcularAsignaciones(pago.clienteId);
-  const resumen = await getResumenCliente(pago.clienteId);
-  res.json({ message: "Pago eliminado correctamente", resumen });
 });
 
 module.exports = router;

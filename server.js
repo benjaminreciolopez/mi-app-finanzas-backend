@@ -12,6 +12,7 @@ const pagosRoutes = require("./routes/pagos");
 const materialesRoutes = require("./routes/materiales");
 const evolucionRoutes = require("./routes/evolucion");
 const deudaRealRoutes = require("./routes/deudaReal");
+const asignacionesRoutes = require("./routes/asignaciones");
 
 const app = express();
 const PORT = 3001;
@@ -52,6 +53,7 @@ app.use("/api/materiales", materialesRoutes);
 app.use("/api/evolucion", evolucionRoutes);
 app.use("/api/deuda-real", deudaRealRoutes);
 app.use("/api/asignaciones", require("./routes/asignaciones"));
+app.use("/api/asignaciones", asignacionesRoutes);
 
 // Start
 app.listen(PORT, () => {
