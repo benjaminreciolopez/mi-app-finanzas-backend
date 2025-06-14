@@ -1,73 +1,107 @@
-// routes/deuda.js
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
-// Ruta: /api/deuda/:clienteId/pendientes
+// Devuelve trabajos y materiales pendientes (con deuda real)
 router.get("/:clienteId/pendientes", async (req, res) => {
   const clienteId = parseInt(req.params.clienteId);
 
-  const { data: cliente, error: clienteError } = await supabase
+  // Obtener trabajos no saldados
+  const { data: trabajos, error: errorTrabajos } = await supabase
+    .from("trabajos")
+    .select("id, fecha, horas")
+    .eq("clienteId", clienteId)
+    .eq("cuadrado", false);
+
+  if (errorTrabajos) {
+    return res.status(400).json({ error: "Error al cargar trabajos" });
+  }
+
+  // Obtener precioHora del cliente
+  const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("precioHora")
     .eq("id", clienteId)
     .single();
 
-  if (clienteError || !cliente) {
+  if (errorCliente || !cliente) {
     return res.status(400).json({ error: "Cliente no encontrado" });
   }
 
-  const precioHora = cliente.precioHora ?? 0;
+  const precioHora = cliente.precioHora;
 
-  const { data: trabajos } = await supabase
-    .from("trabajos")
-    .select("id, fecha, horas, cuadrado")
-    .eq("clienteId", clienteId)
-    .neq("cuadrado", 1);
-
-  const { data: materiales } = await supabase
+  // Obtener materiales no saldados
+  const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
-    .select("id, fecha, coste, cuadrado")
+    .select("id, fecha, coste")
     .eq("clienteid", clienteId)
-    .neq("cuadrado", 1);
+    .eq("cuadrado", false);
 
-  const { data: asignaciones } = await supabase
+  if (errorMateriales) {
+    return res.status(400).json({ error: "Error al cargar materiales" });
+  }
+
+  // Obtener todas las asignaciones de este cliente
+  const { data: asignaciones, error: errorAsignaciones } = await supabase
     .from("asignaciones_pago")
-    .select("*")
+    .select("trabajoid, materialid, usado")
     .eq("clienteid", clienteId);
 
-  const trabajosPendientes = (trabajos || []).map((t) => {
-    const asignado = (asignaciones || [])
-      .filter((a) => a.trabajoid === t.id)
-      .reduce((acc, a) => acc + Number(a.usado), 0);
-    return {
+  if (errorAsignaciones) {
+    return res.status(400).json({ error: "Error al cargar asignaciones" });
+  }
+
+  // Agrupar pagos por trabajo/material
+  const totalPagadoTrabajo = {};
+  const totalPagadoMaterial = {};
+
+  for (const asign of asignaciones) {
+    if (asign.trabajoid) {
+      totalPagadoTrabajo[asign.trabajoid] =
+        (totalPagadoTrabajo[asign.trabajoid] || 0) + asign.usado;
+    }
+    if (asign.materialid) {
+      totalPagadoMaterial[asign.materialid] =
+        (totalPagadoMaterial[asign.materialid] || 0) + asign.usado;
+    }
+  }
+
+  const resultado = [];
+
+  for (const t of trabajos) {
+    const coste = t.horas * precioHora;
+    const pagado = totalPagadoTrabajo[t.id] || 0;
+    const pendiente = +(coste - pagado).toFixed(2);
+
+    resultado.push({
       id: t.id,
-      fecha: t.fecha,
-      coste: +(t.horas * precioHora).toFixed(2),
       tipo: "trabajo",
-      cuadrado: t.cuadrado,
-      pendiente: +(t.horas * precioHora - asignado).toFixed(2),
-    };
-  });
+      fecha: t.fecha,
+      coste,
+      pagado,
+      pendiente,
+    });
+  }
 
-  const materialesPendientes = (materiales || []).map((m) => {
-    const asignado = (asignaciones || [])
-      .filter((a) => a.materialid === m.id)
-      .reduce((acc, a) => acc + Number(a.usado), 0);
-    return {
+  for (const m of materiales) {
+    const coste = m.coste;
+    const pagado = totalPagadoMaterial[m.id] || 0;
+    const pendiente = +(coste - pagado).toFixed(2);
+
+    resultado.push({
       id: m.id,
-      fecha: m.fecha,
-      coste: +m.coste.toFixed(2),
       tipo: "material",
-      cuadrado: m.cuadrado,
-      pendiente: +(m.coste - asignado).toFixed(2),
-    };
-  });
+      fecha: m.fecha,
+      coste,
+      pagado,
+      pendiente,
+    });
+  }
 
-  res.json({
-    trabajos: trabajosPendientes.filter((t) => t.pendiente > 0),
-    materiales: materialesPendientes.filter((m) => m.pendiente > 0),
-  });
+  // Ordenar por fecha ascendente
+  resultado.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+  res.json(resultado);
 });
 
 module.exports = router;
