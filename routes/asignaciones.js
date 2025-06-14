@@ -46,36 +46,90 @@ router.post("/", async (req, res) => {
   const inserts = [];
 
   for (const a of asignaciones) {
+    const tareaId = a.tareaId ?? a.id;
     let fechaTarea = null;
 
+    // Obtener fecha de la tarea
     if (a.tipo === "trabajo") {
       const { data: trabajo, error: errTrabajo } = await supabase
         .from("trabajos")
         .select("fecha")
-        .eq("id", a.tareaId)
+        .eq("id", tareaId)
         .single();
-      if (errTrabajo) {
+      if (errTrabajo || !trabajo) {
         return res.status(400).json({ error: "Error al obtener trabajo" });
       }
-      fechaTarea = trabajo?.fecha || null;
+      fechaTarea = trabajo.fecha;
     } else if (a.tipo === "material") {
       const { data: material, error: errMaterial } = await supabase
         .from("materiales")
         .select("fecha")
-        .eq("id", a.tareaId)
+        .eq("id", tareaId)
         .single();
-      if (errMaterial) {
+      if (errMaterial || !material) {
         return res.status(400).json({ error: "Error al obtener material" });
       }
-      fechaTarea = material?.fecha || null;
+      fechaTarea = material.fecha;
+    }
+
+    // Calcular coste total y total asignado hasta ahora
+    let costeTotal = 0;
+    let totalAsignado = 0;
+
+    if (a.tipo === "trabajo") {
+      const { data: trabajo } = await supabase
+        .from("trabajos")
+        .select("horas, clienteId")
+        .eq("id", tareaId)
+        .single();
+
+      const { data: cliente } = await supabase
+        .from("clientes")
+        .select("precioHora")
+        .eq("id", trabajo.clienteId)
+        .single();
+
+      costeTotal = trabajo.horas * cliente.precioHora;
+
+      const { data: asigns } = await supabase
+        .from("asignaciones_pago")
+        .select("usado")
+        .eq("trabajoid", tareaId);
+
+      totalAsignado = asigns.reduce((sum, a) => sum + a.usado, 0);
+    }
+
+    if (a.tipo === "material") {
+      const { data: material } = await supabase
+        .from("materiales")
+        .select("coste")
+        .eq("id", tareaId)
+        .single();
+
+      costeTotal = material.coste;
+
+      const { data: asigns } = await supabase
+        .from("asignaciones_pago")
+        .select("usado")
+        .eq("materialid", tareaId);
+
+      totalAsignado = asigns.reduce((sum, a) => sum + a.usado, 0);
+    }
+
+    const pendiente = +(costeTotal - totalAsignado).toFixed(2);
+
+    if (a.usado > pendiente + 0.01) {
+      return res.status(400).json({
+        error: `Intentas asignar ${a.usado}€, pero solo quedan ${pendiente}€ pendientes.`,
+      });
     }
 
     inserts.push({
       clienteid: pago.clienteId,
       pagoid: pagoId,
       tipo: a.tipo,
-      trabajoid: a.tipo === "trabajo" ? a.tareaId : null,
-      materialid: a.tipo === "material" ? a.tareaId : null,
+      trabajoid: a.tipo === "trabajo" ? tareaId : null,
+      materialid: a.tipo === "material" ? tareaId : null,
       usado: a.usado,
       fecha_pago: pago.fecha,
       fecha_tarea: fechaTarea,
@@ -83,18 +137,22 @@ router.post("/", async (req, res) => {
     });
   }
 
+  // Insertar todas las asignaciones válidas
   const { error: errorInsert } = await supabase
     .from("asignaciones_pago")
     .insert(inserts);
 
   if (errorInsert) return res.status(400).json({ error: errorInsert.message });
 
+  // Recalcular estado cuadrado/pagado por tarea
   for (const a of asignaciones) {
+    const tareaId = a.tareaId ?? a.id;
+
     if (a.tipo === "trabajo") {
       const { data: trabajo } = await supabase
         .from("trabajos")
         .select("horas, clienteId")
-        .eq("id", a.tareaId)
+        .eq("id", tareaId)
         .single();
 
       const { data: cliente } = await supabase
@@ -108,7 +166,7 @@ router.post("/", async (req, res) => {
       const { data: asigns } = await supabase
         .from("asignaciones_pago")
         .select("usado")
-        .eq("trabajoid", a.tareaId);
+        .eq("trabajoid", tareaId);
 
       const total = asigns.reduce((sum, item) => sum + item.usado, 0);
 
@@ -118,20 +176,20 @@ router.post("/", async (req, res) => {
           cuadrado: total >= coste - 0.01 ? 1 : 0,
           pagado: total >= coste - 0.01,
         })
-        .eq("id", a.tareaId);
+        .eq("id", tareaId);
     }
 
     if (a.tipo === "material") {
       const { data: material } = await supabase
         .from("materiales")
         .select("coste")
-        .eq("id", a.tareaId)
+        .eq("id", tareaId)
         .single();
 
       const { data: asigns } = await supabase
         .from("asignaciones_pago")
         .select("usado")
-        .eq("materialid", a.tareaId);
+        .eq("materialid", tareaId);
 
       const total = asigns.reduce((sum, item) => sum + item.usado, 0);
 
@@ -141,7 +199,7 @@ router.post("/", async (req, res) => {
           cuadrado: total >= material.coste - 0.01 ? 1 : 0,
           pagado: total >= material.coste - 0.01,
         })
-        .eq("id", a.tareaId);
+        .eq("id", tareaId);
     }
   }
 
