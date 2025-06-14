@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
-const { recalcularAsignaciones } = require("../utils/recalcularAsignaciones");
-// Devuelve el resumen actualizado de un cliente (igual que el map pero solo uno)
+
+// Calcula resumen del cliente sin hacer asignaciones nuevas
 async function getResumenCliente(clienteId) {
   const { data: cliente } = await supabase
     .from("clientes")
@@ -53,47 +53,46 @@ async function getResumenCliente(clienteId) {
       coste: +m.coste.toFixed(2),
     }));
 
+  const totalAsignado = (asignaciones || []).reduce(
+    (acc, a) => acc + Number(a.usado),
+    0
+  );
+
+  const totalPagos = (pagos || []).reduce(
+    (acc, p) => acc + Number(p.cantidad),
+    0
+  );
+
+  const saldoACuenta = +(totalPagos - totalAsignado).toFixed(2);
+
   let totalPendiente = 0;
   for (const t of trabajosPendientes) {
     const asignado = (asignaciones || [])
-      .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
+      .filter((a) => a.trabajoid === t.id)
       .reduce((acc, a) => acc + Number(a.usado), 0);
     totalPendiente += Math.max(0, +(t.coste - asignado).toFixed(2));
   }
   for (const m of materialesPendientes) {
     const asignado = (asignaciones || [])
-      .filter((a) => a.materialid === m.id && a.clienteid === cliente.id)
+      .filter((a) => a.materialid === m.id)
       .reduce((acc, a) => acc + Number(a.usado), 0);
     totalPendiente += Math.max(0, +(m.coste - asignado).toFixed(2));
   }
-
-  const totalAsignado = (asignaciones || [])
-    .filter((a) => a.clienteid === cliente.id)
-    .reduce((acc, a) => acc + Number(a.usado), 0);
-
-  const totalPagos = (pagos || [])
-    .filter((p) => p.clienteId === cliente.id)
-    .reduce((acc, p) => acc + Number(p.cantidad), 0);
-
-  const saldoACuenta = totalPagos - totalAsignado;
 
   const deudaReal = Math.max(0, +(totalPendiente - saldoACuenta).toFixed(2));
 
   const totalHorasPendientes = trabajosPendientes.reduce((acc, t) => {
     const asignado = (asignaciones || [])
-      .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
+      .filter((a) => a.trabajoid === t.id)
       .reduce((acc, a) => acc + Number(a.usado), 0);
     const pendienteDinero = Math.max(0, +(t.coste - asignado));
-    const horasPendientes = +(pendienteDinero / (precioHora || 1)).toFixed(2);
-    return acc + horasPendientes;
+    return acc + +(pendienteDinero / (precioHora || 1)).toFixed(2);
   }, 0);
 
-  const pagosUsados = (asignaciones || [])
-    .filter((a) => a.clienteid === cliente.id)
-    .reduce((acc, a) => {
-      acc[a.pagoid] = (acc[a.pagoid] || 0) + Number(a.usado);
-      return acc;
-    }, {});
+  const pagosUsados = (asignaciones || []).reduce((acc, a) => {
+    acc[a.pagoid] = (acc[a.pagoid] || 0) + Number(a.usado);
+    return acc;
+  }, {});
 
   return {
     clienteId: cliente.id,
@@ -105,7 +104,7 @@ async function getResumenCliente(clienteId) {
       0
     ),
     totalDeuda: deudaReal,
-    saldoACuenta: +saldoACuenta.toFixed(2),
+    saldoACuenta,
     pagosUsados: Object.entries(pagosUsados).map(([id, usado]) => ({
       id,
       usado: +usado.toFixed(2),
@@ -113,7 +112,7 @@ async function getResumenCliente(clienteId) {
   };
 }
 
-// Obtener todos los pagos
+// GET /api/pagos
 router.get("/", async (req, res) => {
   const { data, error } = await supabase
     .from("pagos")
@@ -121,11 +120,10 @@ router.get("/", async (req, res) => {
     .order("fecha", { ascending: false });
 
   if (error) return res.status(400).json({ error: error.message });
-
   res.json({ data });
 });
 
-// Añadir nuevo pago
+// POST /api/pagos
 router.post("/", async (req, res) => {
   const { clienteId, cantidad, fecha, observaciones } = req.body;
 
@@ -133,22 +131,17 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Datos de pago no válidos" });
   }
 
-  // --- COMPROBAR SI YA EXISTE PAGO IGUAL ---
-  const { data: pagoExistente, error: errorPagoExistente } = await supabase
+  const { data: pagoExistente } = await supabase
     .from("pagos")
     .select("id")
     .eq("clienteId", clienteId)
     .eq("cantidad", cantidad)
     .eq("fecha", fecha);
 
-  if (errorPagoExistente) {
-    return res.status(500).json({ error: "Error comprobando duplicados" });
-  }
   if (pagoExistente && pagoExistente.length > 0) {
     return res.status(400).json({ error: "Este pago ya existe" });
   }
 
-  // Obtener nombre del cliente
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("nombre")
@@ -159,7 +152,6 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Cliente no encontrado" });
   }
 
-  // Insertar nuevo pago
   const { data, error } = await supabase
     .from("pagos")
     .insert([
@@ -178,9 +170,84 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
-  // Solo devolvemos el resumen, sin asignar nada
   const resumen = await getResumenCliente(clienteId);
   res.json({ id: data?.id, message: "Pago añadido correctamente", resumen });
+});
+// DELETE /api/pagos/:id
+router.delete("/:id", async (req, res) => {
+  const { id } = req.params;
+
+  // Obtener primero el clienteId del pago
+  const { data: pago, error: errorPago } = await supabase
+    .from("pagos")
+    .select("clienteId")
+    .eq("id", id)
+    .single();
+
+  if (errorPago || !pago) {
+    return res.status(404).json({ error: "Pago no encontrado" });
+  }
+
+  // Eliminar el pago
+  const { error: errorEliminacion } = await supabase
+    .from("pagos")
+    .delete()
+    .eq("id", id);
+
+  if (errorEliminacion) {
+    return res.status(500).json({ error: "Error al eliminar el pago" });
+  }
+
+  // Recalcular el resumen del cliente tras eliminar el pago
+  const resumen = await getResumenCliente(pago.clienteId);
+
+  res.json({
+    message: "Pago eliminado correctamente",
+    resumen,
+  });
+});
+// PUT /api/pagos/:id
+router.put("/:id", async (req, res) => {
+  const { id } = req.params;
+  const { cantidad, fecha, observaciones } = req.body;
+
+  // Validaciones básicas
+  if (!cantidad || !fecha || isNaN(cantidad) || cantidad <= 0) {
+    return res.status(400).json({ error: "Datos de pago no válidos" });
+  }
+
+  // Obtener el clienteId del pago
+  const { data: pagoOriginal, error: errorPago } = await supabase
+    .from("pagos")
+    .select("clienteId")
+    .eq("id", id)
+    .single();
+
+  if (errorPago || !pagoOriginal) {
+    return res.status(404).json({ error: "Pago no encontrado" });
+  }
+
+  // Actualizar el pago
+  const { error: errorUpdate } = await supabase
+    .from("pagos")
+    .update({
+      cantidad,
+      fecha,
+      observaciones,
+    })
+    .eq("id", id);
+
+  if (errorUpdate) {
+    return res.status(500).json({ error: "Error al actualizar el pago" });
+  }
+
+  // Obtener el resumen actualizado del cliente
+  const resumen = await getResumenCliente(pagoOriginal.clienteId);
+
+  res.json({
+    message: "Pago actualizado correctamente",
+    resumen,
+  });
 });
 
 module.exports = router;

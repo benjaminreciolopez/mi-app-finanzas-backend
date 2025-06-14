@@ -20,103 +20,85 @@ router.get("/", async (req, res) => {
     .from("materiales")
     .select("id, clienteid, fecha, coste, cuadrado");
 
-  const { data: asignaciones, error: asignacionesError } = await supabase
-    .from("asignaciones_pago")
-    .select("*");
-
   const { data: pagos, error: pagosError } = await supabase
     .from("pagos")
     .select("id, clienteId, cantidad");
 
-  if (trabajosError || materialesError || asignacionesError || pagosError) {
+  if (trabajosError || materialesError || pagosError) {
     return res.status(500).json({ error: "Error al obtener datos" });
   }
 
   const resumen = clientes.map((cliente) => {
     const precioHora = cliente.precioHora ?? 0;
 
-    const trabajosPendientes = (trabajos || [])
-      .filter((t) => t.clienteId === cliente.id && t.cuadrado !== 1)
-      .map((t) => ({
-        id: t.id,
-        tipo: "trabajo",
-        fecha: t.fecha,
-        coste: +(t.horas * precioHora).toFixed(2),
-        horas: t.horas,
-      }));
+    const trabajosCliente = trabajos.filter((t) => t.clienteId === cliente.id);
+    const materialesCliente = materiales.filter(
+      (m) => m.clienteid === cliente.id
+    );
+    const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
 
-    const materialesPendientes = (materiales || [])
-      .filter((m) => m.clienteid === cliente.id && m.cuadrado !== 1)
-      .map((m) => ({
-        id: m.id,
-        tipo: "material",
-        fecha: m.fecha,
-        coste: +m.coste.toFixed(2),
-      }));
+    const trabajosPendientes = trabajosCliente.filter((t) => t.cuadrado !== 1);
+    const materialesPendientes = materialesCliente.filter(
+      (m) => m.cuadrado !== 1
+    );
 
-    let totalPendiente = 0;
-    for (const t of trabajosPendientes) {
-      const asignado = (asignaciones || [])
-        .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
-        .reduce((acc, a) => acc + Number(a.usado), 0);
-      totalPendiente += Math.max(0, +(t.coste - asignado).toFixed(2));
-    }
-    for (const m of materialesPendientes) {
-      const asignado = (asignaciones || [])
-        .filter((a) => a.materialid === m.id && a.clienteid === cliente.id)
-        .reduce((acc, a) => acc + Number(a.usado), 0);
-      totalPendiente += Math.max(0, +(m.coste - asignado).toFixed(2));
-    }
+    const totalTrabajo = trabajosCliente.reduce(
+      (acc, t) => acc + t.horas * precioHora,
+      0
+    );
+    const totalMaterial = materialesCliente.reduce(
+      (acc, m) => acc + m.coste,
+      0
+    );
 
-    const totalAsignado = (asignaciones || [])
-      .filter((a) => a.clienteid === cliente.id)
-      .reduce((acc, a) => acc + Number(a.usado), 0);
+    const totalCuadradoTrabajo = trabajosCliente
+      .filter((t) => t.cuadrado === 1)
+      .reduce((acc, t) => acc + t.horas * precioHora, 0);
 
-    const totalPagos = (pagos || [])
-      .filter((p) => p.clienteId === cliente.id)
-      .reduce((acc, p) => acc + Number(p.cantidad), 0);
+    const totalCuadradoMaterial = materialesCliente
+      .filter((m) => m.cuadrado === 1)
+      .reduce((acc, m) => acc + m.coste, 0);
 
-    const saldoACuenta = totalPagos - totalAsignado;
-    const deudaReal = Math.max(0, +(totalPendiente - saldoACuenta).toFixed(2));
+    const totalPagos = pagosCliente.reduce(
+      (acc, p) => acc + Number(p.cantidad),
+      0
+    );
 
-    const totalHorasPendientes = trabajosPendientes.reduce((acc, t) => {
-      const asignado = (asignaciones || [])
-        .filter((a) => a.trabajoid === t.id && a.clienteid === cliente.id)
-        .reduce((acc, a) => acc + Number(a.usado), 0);
-      const pendienteDinero = Math.max(0, +(t.coste - asignado));
-      const horasPendientes = +(pendienteDinero / (precioHora || 1)).toFixed(2);
-      return acc + horasPendientes;
-    }, 0);
+    const deudaReal =
+      totalTrabajo +
+      totalMaterial -
+      totalCuadradoTrabajo -
+      totalCuadradoMaterial -
+      totalPagos;
 
-    const pagosUsados = (asignaciones || [])
-      .filter((a) => a.clienteid === cliente.id)
-      .reduce((acc, a) => {
-        acc[a.pagoid] = (acc[a.pagoid] || 0) + Number(a.usado);
-        return acc;
-      }, {});
+    const deuda = Math.max(0, +deudaReal.toFixed(2));
+
+    const saldoACuenta = +(
+      totalPagos -
+      (totalCuadradoTrabajo + totalCuadradoMaterial)
+    ).toFixed(2);
 
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
-      totalPagado: +totalAsignado.toFixed(2),
-      totalHorasPendientes,
+      totalPagado: totalPagos,
+      totalHorasPendientes: trabajosPendientes.reduce(
+        (acc, t) => acc + t.horas,
+        0
+      ),
       totalMaterialesPendientes: materialesPendientes.reduce(
         (acc, m) => acc + m.coste,
         0
       ),
-      totalDeuda: deudaReal,
-      saldoACuenta: +saldoACuenta.toFixed(2),
-      pagosUsados: Object.entries(pagosUsados).map(([id, usado]) => ({
-        id,
-        usado: +usado.toFixed(2),
-      })),
+      totalDeuda: deuda,
+      saldoACuenta,
     };
   });
 
   res.json(resumen);
 });
 
-// GET /api/deuda/:clienteId/pendientes
+// ✅ GET /api/deuda/:clienteId/pendientes
 router.get("/:clienteId/pendientes", async (req, res) => {
   const clienteId = parseInt(req.params.clienteId);
   if (isNaN(clienteId)) {
@@ -159,14 +141,14 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const trabajosPendientes = trabajos.data.map((t) => ({
     id: t.id,
     fecha: t.fecha,
-    coste: t.horas * precioHora,
+    coste: +(t.horas * precioHora).toFixed(2),
     tipo: "trabajo",
   }));
 
   const materialesPendientes = materiales.data.map((m) => ({
     id: m.id,
     fecha: m.fecha,
-    coste: m.coste,
+    coste: +m.coste.toFixed(2),
     tipo: "material",
   }));
 

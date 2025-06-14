@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
-const { recalcularAsignaciones } = require("../utils/recalcularAsignaciones");
 const {
   actualizarResumenMensualTrabajo,
 } = require("../utils/actualizarResumenMensual");
@@ -21,7 +20,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Añadir nuevo trabajo y recalcular asignaciones
+// Añadir nuevo trabajo
 router.post("/", async (req, res) => {
   const {
     clienteId,
@@ -35,7 +34,7 @@ router.post("/", async (req, res) => {
   const { data, error } = await supabase
     .from("trabajos")
     .insert([{ clienteId, nombre, fecha, horas, pagado, cuadrado }])
-    .select("id") // Para devolver el id del nuevo trabajo
+    .select("id")
     .single();
 
   if (error) {
@@ -43,11 +42,10 @@ router.post("/", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  // ⬇️ Recalcular asignaciones tras añadir el trabajo
-  res.json({ id: data.id });
+  res.json({ id: data.id }); // ✅ ESTO FALTABA
 });
 
-// Actualizar trabajo (estado o campos generales) y recalcular asignaciones
+// Actualizar trabajo (estado o campos generales)
 router.put("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
 
@@ -70,13 +68,7 @@ router.put("/:id", async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
 
-  // Recalcular asignaciones si hay cliente
-  const clienteId = req.body.clienteId || trabajoAntes.clienteId;
-  if (clienteId) {
-    await recalcularAsignaciones(clienteId);
-  }
-
-  // Buscar el estado NUEVO (después de actualizar)
+  // Calcular si hay cambio de estado pagado/cuadrado
   const pagadoAntes = trabajoAntes.pagado;
   const cuadradoAntes = trabajoAntes.cuadrado;
   const pagadoAhora =
@@ -84,17 +76,14 @@ router.put("/:id", async (req, res) => {
   const cuadradoAhora =
     req.body.cuadrado !== undefined ? req.body.cuadrado : cuadradoAntes;
 
-  // Si hay un cambio de estado pagado/cuadrado, suma o resta al resumen mensual
   if (pagadoAntes !== pagadoAhora || cuadradoAntes !== cuadradoAhora) {
-    // Obtener precioHora del cliente
     const { data: cliente } = await supabase
       .from("clientes")
       .select("precioHora")
-      .eq("id", clienteId)
+      .eq("id", trabajoAntes.clienteId)
       .single();
 
     if (cliente) {
-      // Si ahora está pagado/cuadrado y antes no, SUMA
       if (
         (pagadoAhora === 1 || cuadradoAhora === 1) &&
         !(pagadoAntes === 1 || cuadradoAntes === 1)
@@ -105,9 +94,7 @@ router.put("/:id", async (req, res) => {
           precioHora: cliente.precioHora,
           operacion: "sumar",
         });
-      }
-      // Si ahora NO está pagado/cuadrado y antes sí, RESTA
-      else if (
+      } else if (
         !(pagadoAhora === 1 || cuadradoAhora === 1) &&
         (pagadoAntes === 1 || cuadradoAntes === 1)
       ) {
@@ -124,7 +111,7 @@ router.put("/:id", async (req, res) => {
   res.json({ updated: true });
 });
 
-// Eliminar trabajo y recalcular asignaciones
+// Eliminar trabajo
 router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
 

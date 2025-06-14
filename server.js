@@ -13,7 +13,6 @@ const pagosRoutes = require("./routes/pagos");
 const materialesRoutes = require("./routes/materiales");
 const evolucionRoutes = require("./routes/evolucion");
 const deudaRealRoutes = require("./routes/deudaReal");
-const asignacionesRoutes = require("./routes/asignaciones");
 const deudaRoutes = require("./routes/deuda");
 
 const app = express();
@@ -54,7 +53,6 @@ app.use("/api/pagos", pagosRoutes);
 app.use("/api/materiales", materialesRoutes);
 app.use("/api/evolucion", evolucionRoutes);
 app.use("/api/deuda-real", deudaRealRoutes);
-app.use("/api/asignaciones", asignacionesRoutes);
 app.use("/api/deuda", deudaRoutes);
 
 // Iniciar servidor
