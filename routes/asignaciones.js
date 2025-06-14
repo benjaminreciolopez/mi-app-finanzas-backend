@@ -88,6 +88,7 @@ router.post("/", async (req, res) => {
     .insert(inserts);
 
   if (errorInsert) return res.status(400).json({ error: errorInsert.message });
+
   for (const a of asignaciones) {
     if (a.tipo === "trabajo") {
       const { data: trabajo } = await supabase
@@ -111,12 +112,13 @@ router.post("/", async (req, res) => {
 
       const total = asigns.reduce((sum, item) => sum + item.usado, 0);
 
-      if (total >= coste - 0.01) {
-        await supabase
-          .from("trabajos")
-          .update({ cuadrado: 1, pagado: true })
-          .eq("id", a.tareaId);
-      }
+      await supabase
+        .from("trabajos")
+        .update({
+          cuadrado: total >= coste - 0.01 ? 1 : 0,
+          pagado: total >= coste - 0.01,
+        })
+        .eq("id", a.tareaId);
     }
 
     if (a.tipo === "material") {
@@ -133,24 +135,23 @@ router.post("/", async (req, res) => {
 
       const total = asigns.reduce((sum, item) => sum + item.usado, 0);
 
-      if (total >= material.coste - 0.01) {
-        await supabase
-          .from("materiales")
-          .update({ cuadrado: 1, pagado: true })
-          .eq("id", a.tareaId);
-      }
+      await supabase
+        .from("materiales")
+        .update({
+          cuadrado: total >= material.coste - 0.01 ? 1 : 0,
+          pagado: total >= material.coste - 0.01,
+        })
+        .eq("id", a.tareaId);
     }
   }
 
-  // El resto del código (actualización de saldados) sigue igual...
-  // Puedes dejar como ya lo tenías.
   res.json({ success: true });
 });
+
 // Elimina una asignación individual y actualiza el estado de la tarea si es necesario
 router.delete("/:asignacionId", async (req, res) => {
   const asignacionId = parseInt(req.params.asignacionId);
 
-  // 1. Obtener la asignación antes de eliminar
   const { data: asignacion, error: errorAsignacion } = await supabase
     .from("asignaciones_pago")
     .select("*")
@@ -161,7 +162,6 @@ router.delete("/:asignacionId", async (req, res) => {
     return res.status(404).json({ error: "Asignación no encontrada" });
   }
 
-  // 2. Eliminar la asignación
   const { error: errorDelete } = await supabase
     .from("asignaciones_pago")
     .delete()
@@ -171,7 +171,6 @@ router.delete("/:asignacionId", async (req, res) => {
     return res.status(400).json({ error: "Error al eliminar la asignación" });
   }
 
-  // 3. Verificar si la tarea sigue saldada (suma de asignaciones)
   const campoId = asignacion.tipo === "trabajo" ? "trabajoid" : "materialid";
   const idTarea = asignacion.trabajoid || asignacion.materialid;
 
@@ -188,7 +187,6 @@ router.delete("/:asignacionId", async (req, res) => {
 
   const totalAsignado = otrasAsignaciones.reduce((acc, a) => acc + a.usado, 0);
 
-  // 4. Obtener el coste real de la tarea
   if (asignacion.tipo === "trabajo") {
     const { data: trabajo } = await supabase
       .from("trabajos")
@@ -204,12 +202,13 @@ router.delete("/:asignacionId", async (req, res) => {
 
     const coste = trabajo?.horas * cliente?.precioHora;
 
-    if (coste && totalAsignado < coste) {
-      await supabase
-        .from("trabajos")
-        .update({ cuadrado: 0 })
-        .eq("id", asignacion.trabajoid);
-    }
+    await supabase
+      .from("trabajos")
+      .update({
+        cuadrado: totalAsignado >= coste - 0.01 ? 1 : 0,
+        pagado: totalAsignado >= coste - 0.01,
+      })
+      .eq("id", asignacion.trabajoid);
   } else if (asignacion.tipo === "material") {
     const { data: material } = await supabase
       .from("materiales")
@@ -217,12 +216,13 @@ router.delete("/:asignacionId", async (req, res) => {
       .eq("id", asignacion.materialid)
       .single();
 
-    if (material?.coste && totalAsignado < material.coste) {
-      await supabase
-        .from("materiales")
-        .update({ cuadrado: 0 })
-        .eq("id", asignacion.materialid);
-    }
+    await supabase
+      .from("materiales")
+      .update({
+        cuadrado: totalAsignado >= material.coste - 0.01 ? 1 : 0,
+        pagado: totalAsignado >= material.coste - 0.01,
+      })
+      .eq("id", asignacion.materialid);
   }
 
   res.json({ success: true });
