@@ -3,10 +3,10 @@ const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
-// Devuelve todas (o solo las pendientes/saldadas) asignaciones de pago de un cliente
+// Obtener asignaciones de un cliente (opcionalmente filtradas por cuadrado)
 router.get("/:clienteId", async (req, res) => {
   const clienteId = req.params.clienteId;
-  const { cuadrado } = req.query; // puede ser "0", "1" o undefined
+  const { cuadrado } = req.query;
 
   let query = supabase
     .from("asignaciones_pago")
@@ -24,7 +24,7 @@ router.get("/:clienteId", async (req, res) => {
   res.json(Array.isArray(data) ? data : []);
 });
 
-// Guarda asignaciones manuales de un pago
+// Guardar nuevas asignaciones manuales y actualizar estado de tareas si están saldadas
 router.post("/", async (req, res) => {
   const { pagoId, asignaciones } = req.body;
 
@@ -32,7 +32,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Datos inválidos" });
   }
 
-  // Obtener pago y cliente para asociarlo
+  // Obtener cliente y fecha del pago
   const { data: pago, error: errorPago } = await supabase
     .from("pagos")
     .select("clienteId, fecha")
@@ -43,6 +43,7 @@ router.post("/", async (req, res) => {
     return res.status(404).json({ error: "Pago no encontrado" });
   }
 
+  // Insertar las nuevas asignaciones
   const inserts = asignaciones.map((a) => ({
     clienteid: pago.clienteId,
     pagoid: pagoId,
@@ -55,9 +56,144 @@ router.post("/", async (req, res) => {
     cuadrado: 0,
   }));
 
-  const { error } = await supabase.from("asignaciones_pago").insert(inserts);
+  const { error: errorInsert } = await supabase
+    .from("asignaciones_pago")
+    .insert(inserts);
 
-  if (error) return res.status(400).json({ error: error.message });
+  if (errorInsert) return res.status(400).json({ error: errorInsert.message });
+
+  // Agrupar sumas por tarea
+  const tareasPorTipo = { trabajo: new Map(), material: new Map() };
+  for (const a of asignaciones) {
+    const map = tareasPorTipo[a.tipo];
+    const totalPrevio = map.get(a.tareaId) || 0;
+    map.set(a.tareaId, totalPrevio + a.usado);
+  }
+
+  // Obtener precioHora del cliente
+  const { data: cliente, error: errorCliente } = await supabase
+    .from("clientes")
+    .select("precioHora")
+    .eq("id", pago.clienteId)
+    .single();
+
+  if (errorCliente || !cliente) {
+    return res.status(400).json({ error: "No se pudo obtener el cliente" });
+  }
+
+  // Actualizar trabajos saldados
+  for (const [trabajoId, totalUsado] of tareasPorTipo.trabajo) {
+    const { data: trabajo } = await supabase
+      .from("trabajos")
+      .select("horas")
+      .eq("id", trabajoId)
+      .single();
+
+    const coste = trabajo?.horas * cliente.precioHora;
+    if (trabajo && totalUsado >= coste) {
+      await supabase
+        .from("trabajos")
+        .update({ cuadrado: 1, pagado: 1 })
+        .eq("id", trabajoId);
+    }
+  }
+
+  // Actualizar materiales saldados
+  for (const [materialId, totalUsado] of tareasPorTipo.material) {
+    const { data: material } = await supabase
+      .from("materiales")
+      .select("coste")
+      .eq("id", materialId)
+      .single();
+
+    if (material && totalUsado >= material.coste) {
+      await supabase
+        .from("materiales")
+        .update({ cuadrado: 1 })
+        .eq("id", materialId);
+    }
+  }
+
+  res.json({ success: true });
+});
+// Elimina una asignación individual y actualiza el estado de la tarea si es necesario
+router.delete("/:asignacionId", async (req, res) => {
+  const asignacionId = parseInt(req.params.asignacionId);
+
+  // 1. Obtener la asignación antes de eliminar
+  const { data: asignacion, error: errorAsignacion } = await supabase
+    .from("asignaciones_pago")
+    .select("*")
+    .eq("id", asignacionId)
+    .single();
+
+  if (errorAsignacion || !asignacion) {
+    return res.status(404).json({ error: "Asignación no encontrada" });
+  }
+
+  // 2. Eliminar la asignación
+  const { error: errorDelete } = await supabase
+    .from("asignaciones_pago")
+    .delete()
+    .eq("id", asignacionId);
+
+  if (errorDelete) {
+    return res.status(400).json({ error: "Error al eliminar la asignación" });
+  }
+
+  // 3. Verificar si la tarea sigue saldada (suma de asignaciones)
+  const campoId = asignacion.tipo === "trabajo" ? "trabajoid" : "materialid";
+  const idTarea = asignacion.trabajoid || asignacion.materialid;
+
+  const { data: otrasAsignaciones, error: errorOtras } = await supabase
+    .from("asignaciones_pago")
+    .select("usado")
+    .eq(campoId, idTarea);
+
+  if (errorOtras) {
+    return res
+      .status(500)
+      .json({ error: "Error al comprobar asignaciones restantes" });
+  }
+
+  const totalAsignado = otrasAsignaciones.reduce((acc, a) => acc + a.usado, 0);
+
+  // 4. Obtener el coste real de la tarea
+  if (asignacion.tipo === "trabajo") {
+    const { data: trabajo } = await supabase
+      .from("trabajos")
+      .select("horas")
+      .eq("id", asignacion.trabajoid)
+      .single();
+
+    const { data: cliente } = await supabase
+      .from("clientes")
+      .select("precioHora")
+      .eq("id", asignacion.clienteid)
+      .single();
+
+    const coste = trabajo?.horas * cliente?.precioHora;
+
+    if (coste && totalAsignado < coste) {
+      await supabase
+        .from("trabajos")
+        .update({ cuadrado: 0 })
+        .eq("id", asignacion.trabajoid);
+    }
+  } else if (asignacion.tipo === "material") {
+    const { data: material } = await supabase
+      .from("materiales")
+      .select("coste")
+      .eq("id", asignacion.materialid)
+      .single();
+
+    if (material?.coste && totalAsignado < material.coste) {
+      await supabase
+        .from("materiales")
+        .update({ cuadrado: 0 })
+        .eq("id", asignacion.materialid);
+    }
+  }
 
   res.json({ success: true });
 });
