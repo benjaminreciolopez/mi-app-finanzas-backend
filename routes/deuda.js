@@ -41,7 +41,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     return res.status(400).json({ error: "Error al cargar materiales" });
   }
 
-  // Obtener todas las asignaciones de este cliente
+  // Obtener asignaciones de este cliente
   const { data: asignaciones, error: errorAsignaciones } = await supabase
     .from("asignaciones_pago")
     .select("trabajoid, materialid, usado")
@@ -51,7 +51,6 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     return res.status(400).json({ error: "Error al cargar asignaciones" });
   }
 
-  // Agrupar pagos por trabajo/material
   const totalPagadoTrabajo = {};
   const totalPagadoMaterial = {};
 
@@ -66,42 +65,46 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     }
   }
 
-  const resultado = [];
-
-  for (const t of trabajos) {
+  const trabajosPendientes = trabajos.map((t) => {
     const coste = t.horas * precioHora;
     const pagado = totalPagadoTrabajo[t.id] || 0;
     const pendiente = +(coste - pagado).toFixed(2);
 
-    resultado.push({
+    return {
       id: t.id,
       tipo: "trabajo",
       fecha: t.fecha,
+      horas: t.horas,
+      precioHora,
       coste,
       pagado,
       pendiente,
-    });
-  }
+    };
+  });
 
-  for (const m of materiales) {
+  const materialesPendientes = materiales.map((m) => {
     const coste = m.coste;
     const pagado = totalPagadoMaterial[m.id] || 0;
     const pendiente = +(coste - pagado).toFixed(2);
 
-    resultado.push({
+    return {
       id: m.id,
       tipo: "material",
       fecha: m.fecha,
       coste,
       pagado,
       pendiente,
-    });
-  }
+    };
+  });
 
-  // Ordenar por fecha ascendente
-  resultado.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-
-  res.json(resultado);
+  res.json({
+    trabajos: trabajosPendientes.sort(
+      (a, b) => new Date(a.fecha) - new Date(b.fecha)
+    ),
+    materiales: materialesPendientes.sort(
+      (a, b) => new Date(a.fecha) - new Date(b.fecha)
+    ),
+  });
 });
 
 module.exports = router;
