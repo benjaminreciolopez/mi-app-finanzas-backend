@@ -4,17 +4,20 @@ const supabase = require("../supabaseClient");
 
 // Devuelve trabajos y materiales pendientes (con deuda real)
 router.get("/:clienteId/pendientes", async (req, res) => {
-  const clienteId = parseInt(req.params.clienteId);
+  const clienteId = Number(req.params.clienteId);
+  if (Number.isNaN(clienteId)) {
+    return res.status(400).json({ error: "clienteId inválido" });
+  }
 
-  // Obtener trabajos no saldados
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
-    .select("id, fecha, horas")
-    .eq("clienteId", clienteId)
+    .select("id, clienteid, fecha, horas, cuadrado")
+    .eq("clienteid", clienteId)
     .eq("cuadrado", false);
 
   if (errorTrabajos) {
-    return res.status(400).json({ error: "Error al cargar trabajos" });
+    console.error("❌ Error al obtener trabajos pendientes:", errorTrabajos);
+    return res.status(500).json({ error: "Error al cargar trabajos" });
   }
 
   // Obtener precioHora del cliente
