@@ -14,7 +14,7 @@ const materialesRoutes = require("./routes/materiales");
 const evolucionRoutes = require("./routes/evolucion");
 const deudaRealRoutes = require("./routes/deudaReal");
 const deudaRoutes = require("./routes/deuda");
-
+const estadosPagoRoutes = require("./routes/estadosPago");
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -54,6 +54,7 @@ app.use("/api/materiales", materialesRoutes);
 app.use("/api/evolucion", evolucionRoutes);
 app.use("/api/deuda-real", deudaRealRoutes);
 app.use("/api/deuda", deudaRoutes);
+app.use("/api/estados-pago", estadosPagoRoutes);
 
 // Iniciar servidor
 app.listen(PORT, () => {
