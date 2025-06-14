@@ -88,6 +88,59 @@ router.post("/", async (req, res) => {
     .insert(inserts);
 
   if (errorInsert) return res.status(400).json({ error: errorInsert.message });
+  for (const a of asignaciones) {
+    if (a.tipo === "trabajo") {
+      const { data: trabajo } = await supabase
+        .from("trabajos")
+        .select("horas, clienteId")
+        .eq("id", a.tareaId)
+        .single();
+
+      const { data: cliente } = await supabase
+        .from("clientes")
+        .select("precioHora")
+        .eq("id", trabajo.clienteId)
+        .single();
+
+      const coste = trabajo.horas * cliente.precioHora;
+
+      const { data: asigns } = await supabase
+        .from("asignaciones_pago")
+        .select("usado")
+        .eq("trabajoid", a.tareaId);
+
+      const total = asigns.reduce((sum, item) => sum + item.usado, 0);
+
+      if (total >= coste - 0.01) {
+        await supabase
+          .from("trabajos")
+          .update({ cuadrado: 1, pagado: true })
+          .eq("id", a.tareaId);
+      }
+    }
+
+    if (a.tipo === "material") {
+      const { data: material } = await supabase
+        .from("materiales")
+        .select("coste")
+        .eq("id", a.tareaId)
+        .single();
+
+      const { data: asigns } = await supabase
+        .from("asignaciones_pago")
+        .select("usado")
+        .eq("materialid", a.tareaId);
+
+      const total = asigns.reduce((sum, item) => sum + item.usado, 0);
+
+      if (total >= material.coste - 0.01) {
+        await supabase
+          .from("materiales")
+          .update({ cuadrado: 1, pagado: true })
+          .eq("id", a.tareaId);
+      }
+    }
+  }
 
   // El resto del código (actualización de saldados) sigue igual...
   // Puedes dejar como ya lo tenías.
