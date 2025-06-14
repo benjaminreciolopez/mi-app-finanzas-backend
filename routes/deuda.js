@@ -12,7 +12,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   // 🔧 CAMBIADO: "clienteid" → "clienteId"
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
-    .select("id, clienteId, fecha, horas, cuadrado")
+    .select("*")
     .eq("clienteId", clienteId)
     .eq("cuadrado", false);
 
