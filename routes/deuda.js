@@ -9,10 +9,11 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     return res.status(400).json({ error: "clienteId inválido" });
   }
 
+  // 🔧 CAMBIADO: "clienteid" → "clienteId"
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
-    .select("id, clienteid, fecha, horas, cuadrado")
-    .eq("clienteid", clienteId)
+    .select("id, clienteId, fecha, horas, cuadrado")
+    .eq("clienteId", clienteId)
     .eq("cuadrado", false);
 
   if (errorTrabajos) {
@@ -33,7 +34,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
 
   const precioHora = cliente.precioHora;
 
-  // Obtener materiales no saldados
+  // Obtener materiales no saldados (esto sí es "clienteid" en la tabla materiales)
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
     .select("id, fecha, coste")
