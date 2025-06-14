@@ -1,11 +1,12 @@
 require("dotenv").config();
 const fs = require("fs");
-console.log("Archivos en ./routes:", fs.readdirSync("./routes"));
-
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 
+console.log("Archivos en ./routes:", fs.readdirSync("./routes"));
+
+// Importar rutas
 const clientesRoutes = require("./routes/clientes");
 const trabajosRoutes = require("./routes/trabajos");
 const pagosRoutes = require("./routes/pagos");
@@ -16,7 +17,7 @@ const asignacionesRoutes = require("./routes/asignaciones");
 const deudaRoutes = require("./routes/deuda");
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // Orígenes permitidos (producción + builds temporales de Vercel)
 const allowedOrigins = [
@@ -46,7 +47,7 @@ app.use(
 app.use(bodyParser.json());
 app.use(express.json());
 
-// Rutas
+// Registrar rutas con prefijos claros
 app.use("/api/clientes", clientesRoutes);
 app.use("/api/trabajos", trabajosRoutes);
 app.use("/api/pagos", pagosRoutes);
@@ -56,7 +57,7 @@ app.use("/api/deuda-real", deudaRealRoutes);
 app.use("/api/asignaciones", asignacionesRoutes);
 app.use("/api/deuda", deudaRoutes);
 
-// Start
+// Iniciar servidor
 app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
 });

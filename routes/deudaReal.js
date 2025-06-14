@@ -116,46 +116,54 @@ router.get("/", async (req, res) => {
   res.json(resumen);
 });
 
-// ✅ DETALLE DE PENDIENTES DE UN CLIENTE
+// GET /api/deuda/:clienteId/pendientes
 router.get("/:clienteId/pendientes", async (req, res) => {
   const clienteId = parseInt(req.params.clienteId);
+  if (isNaN(clienteId)) {
+    return res.status(400).json({ error: "ID de cliente no válido" });
+  }
 
-  const { data: cliente, error: errorCliente } = await supabase
+  const [trabajos, materiales] = await Promise.all([
+    supabase
+      .from("trabajos")
+      .select("id, fecha, horas, cuadrado")
+      .eq("clienteId", clienteId)
+      .eq("cuadrado", false),
+    supabase
+      .from("materiales")
+      .select("id, fecha, coste, cuadrado")
+      .eq("clienteid", clienteId)
+      .eq("cuadrado", false),
+  ]);
+
+  if (trabajos.error || materiales.error) {
+    return res.status(500).json({
+      error: trabajos.error?.message || materiales.error?.message,
+    });
+  }
+
+  const clienteRes = await supabase
     .from("clientes")
     .select("precioHora")
     .eq("id", clienteId)
     .single();
 
-  if (errorCliente || !cliente) {
-    return res.status(404).json({ error: "Cliente no encontrado" });
-  }
-
-  const { data: trabajos, error: errorTrabajos } = await supabase
-    .from("trabajos")
-    .select("id, fecha, horas, cuadrado")
-    .eq("clienteId", clienteId)
-    .neq("cuadrado", 1);
-
-  const { data: materiales, error: errorMateriales } = await supabase
-    .from("materiales")
-    .select("id, fecha, coste, cuadrado")
-    .eq("clienteId", clienteId)
-    .neq("cuadrado", 1);
-
-  if (errorTrabajos || errorMateriales) {
+  if (clienteRes.error) {
     return res
       .status(500)
-      .json({ error: "Error al obtener tareas pendientes" });
+      .json({ error: "Error obteniendo precio del cliente" });
   }
 
-  const trabajosPendientes = (trabajos || []).map((t) => ({
+  const precioHora = clienteRes.data.precioHora;
+
+  const trabajosPendientes = trabajos.data.map((t) => ({
     id: t.id,
     fecha: t.fecha,
-    coste: t.horas * cliente.precioHora,
+    coste: t.horas * precioHora,
     tipo: "trabajo",
   }));
 
-  const materialesPendientes = (materiales || []).map((m) => ({
+  const materialesPendientes = materiales.data.map((m) => ({
     id: m.id,
     fecha: m.fecha,
     coste: m.coste,
