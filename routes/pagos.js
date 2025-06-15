@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
+const { actualizarSaldoCliente } = require("../utils/estadoPago");
 
 // Calcula resumen del cliente sin asignaciones nuevas
 async function getResumenCliente(clienteId) {
@@ -122,6 +123,7 @@ router.post("/", async (req, res) => {
   }
 
   const resumen = await getResumenCliente(clienteId);
+  await actualizarSaldoCliente(clienteId);
 
   res.json({ message: "Pago añadido correctamente", resumen, pago: data });
 });
@@ -148,6 +150,7 @@ router.delete("/:id", async (req, res) => {
   if (errorEliminacion) {
     return res.status(500).json({ error: "Error al eliminar el pago" });
   }
+  await actualizarSaldoCliente(pago.clienteId);
 
   const resumen = await getResumenCliente(pago.clienteId);
 
@@ -188,6 +191,7 @@ router.put("/:id", async (req, res) => {
   if (errorUpdate) {
     return res.status(500).json({ error: "Error al actualizar el pago" });
   }
+  await actualizarSaldoCliente(pagoOriginal.clienteId);
 
   const resumen = await getResumenCliente(pagoOriginal.clienteId);
 
