@@ -1,62 +1,62 @@
-// utils/actualizarSaldoCliente.js
-const { createClient } = require("@supabase/supabase-js");
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const supabase = require("../supabaseClient");
 
 async function actualizarSaldoCliente(clienteId) {
-  if (!clienteId) return;
-
+  // Obtener cliente (para precioHora)
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("precioHora")
     .eq("id", clienteId)
     .single();
 
-  if (errorCliente || !cliente) return;
+  if (errorCliente || !cliente) {
+    console.error("❌ Error obteniendo cliente:", errorCliente?.message);
+    return;
+  }
 
-  const precioHora = Number(cliente.precioHora) || 0;
+  const precioHora = cliente.precioHora;
 
+  // Obtener trabajos no cuadrado
   const { data: trabajos } = await supabase
     .from("trabajos")
-    .select("id, horas, cuadrado")
-    .eq("clienteId", clienteId);
+    .select("horas")
+    .eq("clienteId", clienteId)
+    .eq("cuadrado", 0);
 
   const { data: materiales } = await supabase
     .from("materiales")
-    .select("id, coste, cuadrado")
-    .eq("clienteid", clienteId);
+    .select("coste")
+    .eq("clienteid", clienteId)
+    .eq("cuadrado", 0);
 
+  // Calcular deuda
+  const deudaTrabajos =
+    trabajos?.reduce((acc, t) => acc + t.horas * precioHora, 0) || 0;
+
+  const deudaMateriales = materiales?.reduce((acc, m) => acc + m.coste, 0) || 0;
+
+  const deudaTotal = +(deudaTrabajos + deudaMateriales).toFixed(2);
+
+  // Obtener total de pagos
   const { data: pagos } = await supabase
     .from("pagos")
     .select("cantidad")
     .eq("clienteId", clienteId);
 
-  const totalPagado = (pagos || []).reduce(
-    (acc, p) => acc + (Number(p.cantidad) || 0),
-    0
-  );
+  const totalPagado = pagos?.reduce((acc, p) => acc + p.cantidad, 0) || 0;
 
-  const trabajosNoCuadrados = (trabajos || []).filter((t) => t.cuadrado !== 1);
-  const materialesNoCuadrados = (materiales || []).filter(
-    (m) => m.cuadrado !== 1
-  );
+  const saldoACuenta = +(totalPagado - deudaTotal).toFixed(2);
 
-  const deudaPendiente =
-    trabajosNoCuadrados.reduce(
-      (acc, t) => acc + (Number(t.horas) || 0) * precioHora,
-      0
-    ) +
-    materialesNoCuadrados.reduce((acc, m) => acc + (Number(m.coste) || 0), 0);
+  // Actualizar campo solo si hay saldo a favor
+  const nuevoValor = saldoACuenta > 0 ? saldoACuenta : 0;
 
-  const nuevoSaldo = Math.max(0, +(totalPagado - deudaPendiente).toFixed(2));
-
-  await supabase
+  const { error: errorUpdate } = await supabase
     .from("clientes")
-    .update({ saldoDisponible: nuevoSaldo })
+    .update({ saldoACuenta: nuevoValor })
     .eq("id", clienteId);
+
+  if (errorUpdate) {
+    console.error("❌ Error actualizando saldoACuenta:", errorUpdate.message);
+  }
 }
 
 module.exports = { actualizarSaldoCliente };
