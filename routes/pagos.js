@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require("../supabaseClient");
 
 // Calcula resumen del cliente sin hacer asignaciones nuevas
+// Calcula resumen del cliente sin hacer asignaciones nuevas
 async function getResumenCliente(clienteId) {
   const { data: cliente } = await supabase
     .from("clientes")
@@ -32,7 +33,7 @@ async function getResumenCliente(clienteId) {
     .select("id, clienteId, cantidad")
     .eq("clienteId", clienteId);
 
-  const precioHora = cliente.precioHora ?? 0;
+  const precioHora = Number(cliente.precioHora) || 0;
 
   const trabajosPendientes = (trabajos || [])
     .filter((t) => t.cuadrado !== 1)
@@ -40,8 +41,8 @@ async function getResumenCliente(clienteId) {
       id: t.id,
       tipo: "trabajo",
       fecha: t.fecha,
-      coste: +(t.horas * precioHora).toFixed(2),
-      horas: t.horas,
+      horas: Number(t.horas) || 0,
+      coste: +((Number(t.horas) || 0) * precioHora).toFixed(2),
     }));
 
   const materialesPendientes = (materiales || [])
@@ -50,16 +51,16 @@ async function getResumenCliente(clienteId) {
       id: m.id,
       tipo: "material",
       fecha: m.fecha,
-      coste: +m.coste.toFixed(2),
+      coste: +(Number(m.coste) || 0).toFixed(2),
     }));
 
   const totalAsignado = (asignaciones || []).reduce(
-    (acc, a) => acc + Number(a.usado),
+    (acc, a) => acc + (Number(a.usado) || 0),
     0
   );
 
   const totalPagos = (pagos || []).reduce(
-    (acc, p) => acc + Number(p.cantidad),
+    (acc, p) => acc + (Number(p.cantidad) || 0),
     0
   );
 
@@ -69,28 +70,36 @@ async function getResumenCliente(clienteId) {
   for (const t of trabajosPendientes) {
     const asignado = (asignaciones || [])
       .filter((a) => a.trabajoid === t.id)
-      .reduce((acc, a) => acc + Number(a.usado), 0);
+      .reduce((acc, a) => acc + (Number(a.usado) || 0), 0);
     totalPendiente += Math.max(0, +(t.coste - asignado).toFixed(2));
   }
   for (const m of materialesPendientes) {
     const asignado = (asignaciones || [])
       .filter((a) => a.materialid === m.id)
-      .reduce((acc, a) => acc + Number(a.usado), 0);
+      .reduce((acc, a) => acc + (Number(a.usado) || 0), 0);
     totalPendiente += Math.max(0, +(m.coste - asignado).toFixed(2));
   }
 
-  const deudaReal = Math.max(0, +(totalPendiente - saldoACuenta).toFixed(2));
+  const totalPendienteSafe = Number(totalPendiente) || 0;
+  const saldoACuentaSafe = Number(saldoACuenta) || 0;
+
+  const deudaReal = Math.max(
+    0,
+    +(totalPendienteSafe - saldoACuentaSafe).toFixed(2)
+  );
 
   const totalHorasPendientes = trabajosPendientes.reduce((acc, t) => {
     const asignado = (asignaciones || [])
       .filter((a) => a.trabajoid === t.id)
-      .reduce((acc, a) => acc + Number(a.usado), 0);
+      .reduce((acc, a) => acc + (Number(a.usado) || 0), 0);
     const pendienteDinero = Math.max(0, +(t.coste - asignado));
     return acc + +(pendienteDinero / (precioHora || 1)).toFixed(2);
   }, 0);
 
   const pagosUsados = (asignaciones || []).reduce((acc, a) => {
-    acc[a.pagoid] = (acc[a.pagoid] || 0) + Number(a.usado);
+    const id = a.pagoid;
+    const usado = Number(a.usado) || 0;
+    acc[id] = (acc[id] || 0) + usado;
     return acc;
   }, {});
 
@@ -104,7 +113,7 @@ async function getResumenCliente(clienteId) {
       0
     ),
     totalDeuda: deudaReal,
-    saldoACuenta,
+    saldoACuenta: saldoACuentaSafe,
     pagosUsados: Object.entries(pagosUsados).map(([id, usado]) => ({
       id,
       usado: +usado.toFixed(2),
