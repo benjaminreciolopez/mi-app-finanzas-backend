@@ -20,22 +20,24 @@ const PORT = process.env.PORT || 3001;
 
 // Orígenes permitidos (producción + builds temporales de Vercel)
 const allowedOrigins = [
+  "http://localhost:5173",
+  "https://mi-app-web.onrender.com",
   "https://mi-app-finanzas-frontend.vercel.app",
   /^https:\/\/mi-app-finanzas-frontend-git-.*\.vercel\.app$/,
 ];
 
-// Middleware CORS dinámico
 app.use(
   cors({
     origin: (origin, callback) => {
       if (
-        !origin ||
+        !origin || // permite Postman y SSR
         allowedOrigins.some((o) =>
           typeof o === "string" ? o === origin : o.test(origin)
         )
       ) {
         callback(null, true);
       } else {
+        console.error("❌ CORS bloqueado para:", origin);
         callback(new Error("No permitido por CORS"));
       }
     },
