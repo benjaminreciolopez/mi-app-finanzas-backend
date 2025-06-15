@@ -122,6 +122,7 @@ async function getResumenCliente(clienteId) {
       0
     ),
     totalDeuda: deudaReal,
+    totalTareasPendientes: totalPendienteSafe, // 👈 añade esto
     saldoACuenta: saldoACuentaSafe,
     pagosUsados: Object.entries(pagosUsados).map(([id, usado]) => ({
       id,
