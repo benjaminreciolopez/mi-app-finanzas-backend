@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
-// ✅ RESUMEN DE TODOS LOS CLIENTES
+// Resumen de todos los clientes
 router.get("/", async (req, res) => {
   const { data: clientes, error: clientesError } = await supabase
     .from("clientes")
@@ -14,7 +14,7 @@ router.get("/", async (req, res) => {
 
   const { data: trabajos, error: trabajosError } = await supabase
     .from("trabajos")
-    .select("id, clienteId, fecha, horas, cuadrado");
+    .select("id, clienteid, fecha, horas, cuadrado");
 
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
@@ -31,16 +31,14 @@ router.get("/", async (req, res) => {
   const resumen = clientes.map((cliente) => {
     const precioHora = cliente.precioHora ?? 0;
 
-    const trabajosCliente = trabajos.filter((t) => t.clienteId === cliente.id);
+    const trabajosCliente = trabajos.filter((t) => t.clienteid === cliente.id);
     const materialesCliente = materiales.filter(
       (m) => m.clienteid === cliente.id
     );
     const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
 
-    const trabajosPendientes = trabajosCliente.filter((t) => t.cuadrado !== 1);
-    const materialesPendientes = materialesCliente.filter(
-      (m) => m.cuadrado !== 1
-    );
+    const trabajosPendientes = trabajosCliente.filter((t) => !t.cuadrado);
+    const materialesPendientes = materialesCliente.filter((m) => !m.cuadrado);
 
     const totalTrabajo = trabajosCliente.reduce(
       (acc, t) => acc + t.horas * precioHora,
@@ -52,11 +50,11 @@ router.get("/", async (req, res) => {
     );
 
     const totalCuadradoTrabajo = trabajosCliente
-      .filter((t) => t.cuadrado === 1)
+      .filter((t) => t.cuadrado)
       .reduce((acc, t) => acc + t.horas * precioHora, 0);
 
     const totalCuadradoMaterial = materialesCliente
-      .filter((m) => m.cuadrado === 1)
+      .filter((m) => m.cuadrado)
       .reduce((acc, m) => acc + m.coste, 0);
 
     const totalPagos = pagosCliente.reduce(
@@ -98,7 +96,7 @@ router.get("/", async (req, res) => {
   res.json(resumen);
 });
 
-// ✅ GET /api/deuda/:clienteId/pendientes
+// Obtener trabajos y materiales pendientes para cliente específico
 router.get("/:clienteId/pendientes", async (req, res) => {
   const clienteId = parseInt(req.params.clienteId);
   if (isNaN(clienteId)) {
@@ -109,7 +107,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     supabase
       .from("trabajos")
       .select("id, fecha, horas, cuadrado")
-      .eq("clienteId", clienteId)
+      .eq("clienteid", clienteId)
       .eq("cuadrado", false),
     supabase
       .from("materiales")

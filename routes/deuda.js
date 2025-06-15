@@ -13,7 +13,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
     .select("id, fecha, horas")
-    .eq("clienteId", clienteId)
+    .eq("clienteid", clienteId) // cambiado a clienteid
     .eq("cuadrado", false);
 
   if (errorTrabajos) {
@@ -25,7 +25,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("precioHora")
-    .eq("id", clienteId)
+    .eq("id", clienteId) // permanece como id
     .single();
 
   if (errorCliente || !cliente) {
@@ -38,7 +38,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
     .select("id, fecha, coste")
-    .eq("clienteid", clienteId)
+    .eq("clienteid", clienteId) // cambiado a clienteid
     .eq("cuadrado", false);
 
   if (errorMateriales) {
