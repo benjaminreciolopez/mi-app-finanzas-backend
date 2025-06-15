@@ -3,7 +3,6 @@ const router = express.Router();
 const supabase = require("../supabaseClient");
 
 // Calcula resumen del cliente sin hacer asignaciones nuevas
-// Calcula resumen del cliente sin hacer asignaciones nuevas
 async function getResumenCliente(clienteId) {
   const { data: cliente } = await supabase
     .from("clientes")
@@ -270,4 +269,7 @@ router.put("/:id", async (req, res) => {
   });
 });
 
-module.exports = router;
+module.exports = {
+  router,
+  getResumenCliente,
+};
