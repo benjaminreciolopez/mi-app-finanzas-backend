@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
-const { actualizarSaldoCliente } = require("../utils/estadoPago");
+const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
 
 // Calcula resumen del cliente sin asignaciones nuevas
 async function getResumenCliente(clienteId) {
