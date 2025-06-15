@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
-// Resumen de todos los clientes
+// ✅ Resumen de todos los clientes
 router.get("/", async (req, res) => {
   const { data: clientes, error: clientesError } = await supabase
     .from("clientes")
@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
 
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
-    .select("id, clienteid, fecha, coste, cuadrado");
+    .select("id, clienteid, fecha, coste, cuadrado"); // solo si aún no has renombrado el campo
 
   const { data: pagos, error: pagosError } = await supabase
     .from("pagos")
@@ -37,7 +37,7 @@ router.get("/", async (req, res) => {
 
     const trabajosCliente = trabajos.filter((t) => t.clienteId === cliente.id);
     const materialesCliente = materiales.filter(
-      (m) => m.clienteid === cliente.id
+      (m) => m.clienteid === cliente.id // cambia a m.clienteId si renombras el campo
     );
     const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
 
@@ -100,7 +100,7 @@ router.get("/", async (req, res) => {
   res.json(resumen);
 });
 
-// Obtener trabajos y materiales pendientes para cliente específico
+// ✅ Trabajos y materiales pendientes para un cliente
 router.get("/:clienteId/pendientes", async (req, res) => {
   const clienteId = parseInt(req.params.clienteId);
   if (isNaN(clienteId)) {
@@ -111,13 +111,13 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     supabase
       .from("trabajos")
       .select("id, fecha, horas, cuadrado")
-      .eq("clienteid", clienteId)
-      .eq("cuadrado", false),
+      .eq("clienteId", clienteId)
+      .eq("cuadrado", 0),
     supabase
       .from("materiales")
       .select("id, fecha, coste, cuadrado")
-      .eq("clienteid", clienteId)
-      .eq("cuadrado", false),
+      .eq("clienteid", clienteId) // cambia a .eq("clienteId", clienteId) si renombras el campo
+      .eq("cuadrado", 0),
   ]);
 
   if (trabajos.error || materiales.error) {

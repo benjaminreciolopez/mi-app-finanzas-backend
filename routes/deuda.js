@@ -13,8 +13,8 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
     .select("id, fecha, horas")
-    .eq("clienteId", clienteId) // ✅ con "I" mayúscula
-    .eq("cuadrado", false);
+    .eq("clienteId", clienteId) // ✅ correcto
+    .eq("cuadrado", 0); // ✅ entero, no booleano
 
   if (errorTrabajos) {
     console.error("❌ Error al obtener trabajos:", errorTrabajos.message);
@@ -25,7 +25,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("precioHora")
-    .eq("id", clienteId) // permanece como id
+    .eq("id", clienteId)
     .single();
 
   if (errorCliente || !cliente) {
@@ -38,11 +38,12 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
     .select("id, fecha, coste")
-    .eq("clienteid", clienteId) // ⛔ inconsistente, pero si así está en la tabla, OK
-    .eq("cuadrado", false);
+    .eq("clienteid", clienteId) // ⛔ sigue usando clienteid, asegúrate de que así está en la tabla
+    .eq("cuadrado", 0); // ✅ entero, no booleano
 
   if (errorMateriales) {
-    return res.status(400).json({ error: "Error al cargar materiales" });
+    console.error("❌ Error al obtener materiales:", errorMateriales.message);
+    return res.status(500).json({ error: "Error al cargar materiales" });
   }
 
   // Mapear trabajos con su coste

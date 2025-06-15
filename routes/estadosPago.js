@@ -25,7 +25,7 @@ router.post("/", async (req, res) => {
 
     const { error } = await supabase
       .from(tabla)
-      .update({ pagado: true, cuadrado: true })
+      .update({ pagado: 1, cuadrado: 1 }) // ← ✅ corregido
       .eq("id", id)
       .eq(campoCliente, clienteId);
 
