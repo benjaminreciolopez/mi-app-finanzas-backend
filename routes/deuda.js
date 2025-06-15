@@ -38,7 +38,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
     .select("id, fecha, coste")
-    .eq("clienteId", clienteId)
+    .eq("clienteid", clienteId)
     .eq("cuadrado", 0);
 
   if (errorMateriales) {
