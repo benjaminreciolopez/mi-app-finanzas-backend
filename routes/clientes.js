@@ -11,23 +11,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 router.get("/", async (req, res) => {
   const { data, error } = await supabase
     .from("clientes")
-    .select("*")
+    .select("id, nombre, precioHora, orden, saldoDisponible")
     .order("orden", { ascending: true });
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ data });
-});
-
-// ✅ Nuevo endpoint: Obtener saldos disponibles
-router.get("/saldos", async (req, res) => {
-  const { data, error } = await supabase
-    .from("clientes")
-    .select("id, nombre, saldoDisponible")
-    .order("nombre", { ascending: true });
-
-  if (error) {
-    return res.status(500).json({ error: "Error al obtener saldos" });
-  }
-
   res.json({ data });
 });
 
@@ -56,7 +42,7 @@ router.post("/", async (req, res) => {
 
   const { data, error } = await supabase
     .from("clientes")
-    .insert([{ nombre, precioHora, orden: siguienteOrden }])
+    .insert([{ nombre, precioHora, orden: siguienteOrden, saldoDisponible: 0 }])
     .select();
 
   if (error) return res.status(500).json({ error: error.message });
@@ -88,6 +74,7 @@ router.put("/orden", async (req, res) => {
 // Actualizar cliente
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
+  delete req.body.saldoDisponible;
   const campos = {};
   if (req.body.nombre !== undefined) campos.nombre = req.body.nombre;
   if (req.body.precioHora !== undefined)
@@ -125,6 +112,26 @@ router.delete("/:id", async (req, res) => {
     return res.status(404).json({ error: "Cliente no encontrado" });
 
   res.json({ message: "Cliente eliminado" });
+});
+// ✅ Nuevo endpoint: actualizar saldoDisponible del cliente
+router.put("/:id/saldo", async (req, res) => {
+  const clienteId = Number(req.params.id);
+  const saldoRestante = Number(req.body.saldo);
+
+  if (Number.isNaN(clienteId) || Number.isNaN(saldoRestante)) {
+    return res.status(400).json({ error: "Datos inválidos" });
+  }
+
+  const { error } = await supabase
+    .from("clientes")
+    .update({ saldoDisponible: saldoRestante })
+    .eq("id", clienteId);
+
+  if (error) {
+    return res.status(500).json({ error: "Error al actualizar el saldo" });
+  }
+
+  res.json({ message: "Saldo actualizado correctamente" });
 });
 
 module.exports = router;
