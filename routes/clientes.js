@@ -129,7 +129,7 @@ router.delete("/:id", async (req, res) => {
 // ✅ Actualizar solo el saldoDisponible del cliente
 router.put("/:id/saldo", async (req, res) => {
   const clienteId = Number(req.params.id);
-  const saldoRestante = Number(req.body.saldo);
+  const saldoRestante = Number(req.body.nuevoSaldo); // ← 🔧 Cambio clave
 
   if (Number.isNaN(clienteId) || Number.isNaN(saldoRestante)) {
     return res.status(400).json({ error: "Datos inválidos" });
