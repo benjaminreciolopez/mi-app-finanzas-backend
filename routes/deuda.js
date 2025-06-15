@@ -13,7 +13,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
     .select("id, fecha, horas")
-    .eq("clienteid", clienteId) // cambiado a clienteid
+    .eq("clienteId", clienteId) // ✅ con "I" mayúscula
     .eq("cuadrado", false);
 
   if (errorTrabajos) {
@@ -38,7 +38,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
     .select("id, fecha, coste")
-    .eq("clienteid", clienteId) // cambiado a clienteid
+    .eq("clienteid", clienteId) // ⛔ inconsistente, pero si así está en la tabla, OK
     .eq("cuadrado", false);
 
   if (errorMateriales) {
