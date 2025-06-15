@@ -63,7 +63,7 @@ async function getResumenCliente(clienteId) {
     0
   );
 
-  const saldoACuenta = +(totalPagos - totalAsignado).toFixed(2);
+  let saldoACuenta = +(totalPagos - totalAsignado).toFixed(2);
 
   let totalPendiente = 0;
   for (const t of trabajosPendientes) {
@@ -80,6 +80,12 @@ async function getResumenCliente(clienteId) {
   }
 
   const totalPendienteSafe = Number(totalPendiente) || 0;
+
+  // 👇 Aquí aplicamos la corrección final
+  if (totalPendienteSafe <= 0.01) {
+    saldoACuenta = 0;
+  }
+
   const saldoACuentaSafe = Number(saldoACuenta) || 0;
 
   const deudaReal = Math.max(
