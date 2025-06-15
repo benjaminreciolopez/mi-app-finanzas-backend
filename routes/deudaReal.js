@@ -80,6 +80,10 @@ router.get("/", async (req, res) => {
       (totalCuadradoTrabajo + totalCuadradoMaterial)
     ).toFixed(2);
 
+    const totalTareasPendientes =
+      trabajosPendientes.reduce((acc, t) => acc + t.horas * precioHora, 0) +
+      materialesPendientes.reduce((acc, m) => acc + m.coste, 0);
+
     return {
       clienteId: cliente.id,
       nombre: cliente.nombre,
@@ -92,7 +96,7 @@ router.get("/", async (req, res) => {
         (acc, m) => acc + m.coste,
         0
       ),
-      totalTareasPendientes: totalPendiente, // 👈 AÑADIDO
+      totalTareasPendientes, // ✅ Ya definido correctamente
       totalDeuda: deuda,
       saldoACuenta,
     };
