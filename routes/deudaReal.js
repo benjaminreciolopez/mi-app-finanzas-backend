@@ -92,6 +92,7 @@ router.get("/", async (req, res) => {
         (acc, m) => acc + m.coste,
         0
       ),
+      totalTareasPendientes: totalPendiente, // 👈 AÑADIDO
       totalDeuda: deuda,
       saldoACuenta,
     };
