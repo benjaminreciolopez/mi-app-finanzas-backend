@@ -82,10 +82,10 @@ router.put("/orden", async (req, res) => {
   }
 });
 
-// ✅ Actualizar cliente (sin permitir modificar saldoDisponible)
+// ✅ Actualizar cliente (nombre y precioHora)
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
-  delete req.body.saldoDisponible;
+  delete req.body.saldoDisponible; // 🛡️ Protección
 
   const campos = {};
   if (req.body.nombre !== undefined) campos.nombre = req.body.nombre;
@@ -129,15 +129,15 @@ router.delete("/:id", async (req, res) => {
 // ✅ Actualizar solo el saldoDisponible del cliente
 router.put("/:id/saldo", async (req, res) => {
   const clienteId = Number(req.params.id);
-  const saldoRestante = Number(req.body.nuevoSaldo); // ← 🔧 Cambio clave
+  const nuevoSaldo = Number(req.body.nuevoSaldo); // ✅ Usar "nuevoSaldo"
 
-  if (Number.isNaN(clienteId) || Number.isNaN(saldoRestante)) {
+  if (Number.isNaN(clienteId) || Number.isNaN(nuevoSaldo)) {
     return res.status(400).json({ error: "Datos inválidos" });
   }
 
   const { error } = await supabase
     .from("clientes")
-    .update({ saldoDisponible: saldoRestante })
+    .update({ saldoDisponible: nuevoSaldo })
     .eq("id", clienteId);
 
   if (error) {
