@@ -44,18 +44,22 @@ async function actualizarSaldoCliente(clienteId) {
 
   const totalPagado = pagos?.reduce((acc, p) => acc + p.cantidad, 0) || 0;
 
-  const saldoACuenta = +(totalPagado - deudaTotal).toFixed(2);
+  let saldoACuenta = +(totalPagado - deudaTotal).toFixed(2);
 
-  // Actualizar campo solo si hay saldo a favor
-  const nuevoValor = saldoACuenta > 0 ? saldoACuenta : 0;
+  // ✅ Si la deuda ha sido saldada completamente, poner saldo a cuenta a 0
+  if (deudaTotal <= 0.01) {
+    saldoACuenta = 0;
+  }
 
   const { error: errorUpdate } = await supabase
     .from("clientes")
-    .update({ saldoACuenta: nuevoValor })
+    .update({ saldoACuenta })
     .eq("id", clienteId);
 
   if (errorUpdate) {
     console.error("❌ Error actualizando saldoACuenta:", errorUpdate.message);
+  } else {
+    console.log(`✅ SaldoACuenta actualizado: ${saldoACuenta}€`);
   }
 }
 
