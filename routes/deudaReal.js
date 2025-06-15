@@ -22,9 +22,13 @@ router.get("/", async (req, res) => {
 
   const { data: pagos, error: pagosError } = await supabase
     .from("pagos")
-    .select("id, clienteId, cantidad");
+    .select("id, clienteid, cantidad");
 
   if (trabajosError || materialesError || pagosError) {
+    console.error("Errores al obtener datos:");
+    if (trabajosError) console.error("Trabajos:", trabajosError.message);
+    if (materialesError) console.error("Materiales:", materialesError.message);
+    if (pagosError) console.error("Pagos:", pagosError.message);
     return res.status(500).json({ error: "Error al obtener datos" });
   }
 
@@ -35,7 +39,7 @@ router.get("/", async (req, res) => {
     const materialesCliente = materiales.filter(
       (m) => m.clienteid === cliente.id
     );
-    const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
+    const pagosCliente = pagos.filter((p) => p.clienteid === cliente.id);
 
     const trabajosPendientes = trabajosCliente.filter((t) => !t.cuadrado);
     const materialesPendientes = materialesCliente.filter((m) => !m.cuadrado);
