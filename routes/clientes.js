@@ -7,24 +7,31 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Obtener todos los clientes
+// ✅ Obtener todos los clientes
 router.get("/", async (req, res) => {
   const { data, error } = await supabase
     .from("clientes")
     .select("id, nombre, precioHora, orden, saldoDisponible")
     .order("orden", { ascending: true });
-  if (error) return res.status(500).json({ error: error.message });
+
+  if (error) {
+    console.error("❌ Error al obtener clientes:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+
   res.json({ data });
 });
 
-// Añadir nuevo cliente
+// ✅ Añadir nuevo cliente
 router.post("/", async (req, res) => {
   let { nombre, precioHora } = req.body;
+
   if (!nombre || precioHora === undefined || isNaN(Number(precioHora))) {
     return res
       .status(400)
       .json({ error: "Nombre y precioHora numérico son obligatorios" });
   }
+
   precioHora = Number(precioHora);
 
   const { data: existentes, error: errorConsulta } = await supabase
@@ -50,31 +57,36 @@ router.post("/", async (req, res) => {
   res.json({ message: "Cliente añadido", id: data[0].id });
 });
 
-// Actualizar orden de clientes
+// ✅ Actualizar orden de clientes
 router.put("/orden", async (req, res) => {
   const { ordenes } = req.body;
+
   try {
     const updates = await Promise.allSettled(
       ordenes.map(({ id, orden }) =>
         supabase.from("clientes").update({ orden }).eq("id", id)
       )
     );
+
     const fallos = updates.filter((u) => u.status === "rejected");
+
     if (fallos.length) {
       return res
         .status(500)
         .json({ error: "Algún orden no se actualizó correctamente" });
     }
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Actualizar cliente
+// ✅ Actualizar cliente (sin permitir modificar saldoDisponible)
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   delete req.body.saldoDisponible;
+
   const campos = {};
   if (req.body.nombre !== undefined) campos.nombre = req.body.nombre;
   if (req.body.precioHora !== undefined)
@@ -97,7 +109,7 @@ router.put("/:id", async (req, res) => {
   res.json({ message: "Cliente actualizado" });
 });
 
-// Eliminar cliente
+// ✅ Eliminar cliente
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -113,7 +125,8 @@ router.delete("/:id", async (req, res) => {
 
   res.json({ message: "Cliente eliminado" });
 });
-// ✅ Nuevo endpoint: actualizar saldoDisponible del cliente
+
+// ✅ Actualizar solo el saldoDisponible del cliente
 router.put("/:id/saldo", async (req, res) => {
   const clienteId = Number(req.params.id);
   const saldoRestante = Number(req.body.saldo);
