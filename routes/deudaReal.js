@@ -92,3 +92,5 @@ router.get("/", async (req, res) => {
 
   res.json(resumen);
 });
+
+module.exports = router;
