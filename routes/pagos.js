@@ -180,7 +180,7 @@ router.post("/", async (req, res) => {
   }
 
   const resumen = await getResumenCliente(clienteId);
-  res.json({ id: data?.id, message: "Pago añadido correctamente", resumen });
+  res.json({ message: "Pago añadido correctamente", resumen, pago: data });
 });
 // DELETE /api/pagos/:id
 router.delete("/:id", async (req, res) => {
