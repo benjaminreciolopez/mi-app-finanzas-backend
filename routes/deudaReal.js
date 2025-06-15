@@ -63,14 +63,17 @@ router.get("/", async (req, res) => {
       totalPendienteTrabajo + totalPendienteMaterial
     ).toFixed(2);
 
-    const deudaReal = Math.max(
-      0,
-      +(totalTareasPendientes - totalPagos).toFixed(2)
-    );
-    const saldoACuenta = Math.max(
-      0,
-      +(totalPagos - totalTareasPendientes).toFixed(2)
-    );
+    let deudaReal = +(totalTareasPendientes - totalPagos).toFixed(2);
+    let saldoACuenta = +(totalPagos - totalTareasPendientes).toFixed(2);
+
+    // ✅ Corrección: si no quedan tareas ni materiales, saldoACuenta se limpia
+    if (trabajosPendientes.length === 0 && materialesPendientes.length === 0) {
+      saldoACuenta = Math.max(0, saldoACuenta);
+      deudaReal = 0;
+    } else {
+      saldoACuenta = Math.max(0, saldoACuenta);
+      deudaReal = Math.max(0, deudaReal);
+    }
 
     return {
       clienteId: cliente.id,
