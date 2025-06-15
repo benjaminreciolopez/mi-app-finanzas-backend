@@ -1,3 +1,5 @@
+const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
+
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
@@ -108,6 +110,9 @@ router.put("/:id", async (req, res) => {
     }
   }
 
+  // ⚠️ MUY IMPORTANTE: recalcular saldo SOLO después de todo lo demás
+  await actualizarSaldoCliente(trabajoAntes.clienteId);
+
   res.json({ updated: true });
 });
 
@@ -140,6 +145,7 @@ router.delete("/:id", async (req, res) => {
         precioHora: cliente.precioHora,
         operacion: "restar",
       });
+      await actualizarSaldoCliente(trabajo.clienteId);
     }
   }
 

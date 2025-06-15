@@ -17,6 +17,20 @@ router.get("/", async (req, res) => {
   res.json({ data });
 });
 
+// ✅ Nuevo endpoint: Obtener saldos disponibles
+router.get("/saldos", async (req, res) => {
+  const { data, error } = await supabase
+    .from("clientes")
+    .select("id, nombre, saldoDisponible")
+    .order("nombre", { ascending: true });
+
+  if (error) {
+    return res.status(500).json({ error: "Error al obtener saldos" });
+  }
+
+  res.json({ data });
+});
+
 // Añadir nuevo cliente
 router.post("/", async (req, res) => {
   let { nombre, precioHora } = req.body;
@@ -27,7 +41,6 @@ router.post("/", async (req, res) => {
   }
   precioHora = Number(precioHora);
 
-  // Obtener el orden más alto actual
   const { data: existentes, error: errorConsulta } = await supabase
     .from("clientes")
     .select("orden")
@@ -41,7 +54,6 @@ router.post("/", async (req, res) => {
   const siguienteOrden =
     existentes?.[0]?.orden != null ? existentes[0].orden + 1 : 0;
 
-  // Insertar con orden automático
   const { data, error } = await supabase
     .from("clientes")
     .insert([{ nombre, precioHora, orden: siguienteOrden }])
@@ -54,9 +66,8 @@ router.post("/", async (req, res) => {
 
 // Actualizar orden de clientes
 router.put("/orden", async (req, res) => {
-  const { ordenes } = req.body; // [{ id: 1, orden: 0 }, { id: 3, orden: 1 }, ...]
+  const { ordenes } = req.body;
   try {
-    // Usamos Promise.allSettled para saber si alguno falla
     const updates = await Promise.allSettled(
       ordenes.map(({ id, orden }) =>
         supabase.from("clientes").update({ orden }).eq("id", id)

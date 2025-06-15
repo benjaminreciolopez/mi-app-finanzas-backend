@@ -13,8 +13,8 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
     .select("id, fecha, horas")
-    .eq("clienteId", clienteId) // ✅ correcto
-    .eq("cuadrado", 0); // ✅ entero, no booleano
+    .eq("clienteId", clienteId)
+    .eq("cuadrado", 0);
 
   if (errorTrabajos) {
     console.error("❌ Error al obtener trabajos:", errorTrabajos.message);
@@ -32,46 +32,73 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     return res.status(400).json({ error: "Cliente no encontrado" });
   }
 
-  const precioHora = cliente.precioHora;
+  const precioHora = parseFloat(cliente.precioHora) || 0;
 
   // Obtener materiales no saldados
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
     .select("id, fecha, coste")
-    .eq("clienteid", clienteId) // ⛔ sigue usando clienteid, asegúrate de que así está en la tabla
-    .eq("cuadrado", 0); // ✅ entero, no booleano
+    .eq("clienteId", clienteId)
+    .eq("cuadrado", 0);
 
   if (errorMateriales) {
     console.error("❌ Error al obtener materiales:", errorMateriales.message);
     return res.status(500).json({ error: "Error al cargar materiales" });
   }
 
-  // Mapear trabajos con su coste
-  const trabajosPendientes = trabajos.map((t) => {
-    const coste = +(t.horas * precioHora).toFixed(2);
+  // Obtener pagos del cliente
+  const { data: pagos } = await supabase
+    .from("pagos")
+    .select("cantidad")
+    .eq("clienteId", clienteId);
+
+  // Obtener asignaciones del cliente
+  const { data: asignaciones } = await supabase
+    .from("asignaciones_pago")
+    .select("usado")
+    .eq("clienteid", clienteId);
+
+  const totalPagado = (pagos || []).reduce(
+    (acc, p) => acc + (parseFloat(p.cantidad) || 0),
+    0
+  );
+
+  const totalAsignado = (asignaciones || []).reduce(
+    (acc, a) => acc + (parseFloat(a.usado) || 0),
+    0
+  );
+
+  const saldoACuenta = +(totalPagado - totalAsignado).toFixed(2);
+
+  // Mapear trabajos
+  const trabajosPendientes = (trabajos || []).map((t) => {
+    const horas = parseFloat(t.horas) || 0;
+    const coste = +(horas * precioHora).toFixed(2);
     return {
       id: t.id,
       tipo: "trabajo",
       fecha: t.fecha,
-      horas: t.horas,
+      horas,
       precioHora,
       coste,
-      pendiente: coste, // 👈 añadido
+      pendiente: coste,
     };
   });
 
-  const materialesPendientes = materiales.map((m) => {
-    const coste = +m.coste.toFixed(2);
+  // Mapear materiales
+  const materialesPendientes = (materiales || []).map((m) => {
+    const coste = parseFloat(m.coste) || 0;
     return {
       id: m.id,
       tipo: "material",
       fecha: m.fecha,
       coste,
-      pendiente: coste, // 👈 añadido
+      pendiente: coste,
     };
   });
 
   res.json({
+    saldoACuenta,
     trabajos: trabajosPendientes.sort(
       (a, b) => new Date(a.fecha) - new Date(b.fecha)
     ),

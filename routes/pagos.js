@@ -102,6 +102,17 @@ async function getResumenCliente(clienteId) {
     acc[id] = (acc[id] || 0) + usado;
     return acc;
   }, {});
+  // Calculamos el saldo final a guardar
+  let saldoDisponible = 0;
+  if (trabajosPendientes.length > 0 || materialesPendientes.length > 0) {
+    saldoDisponible = saldoACuentaSafe;
+  }
+
+  // Guardamos el saldoDisponible en la tabla de clientes
+  await supabase
+    .from("clientes")
+    .update({ saldoDisponible })
+    .eq("id", clienteId);
 
   return {
     clienteId: cliente.id,
@@ -180,6 +191,8 @@ router.post("/", async (req, res) => {
   }
 
   const resumen = await getResumenCliente(clienteId);
+  const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
+  await actualizarSaldoCliente(clienteId);
   res.json({ message: "Pago añadido correctamente", resumen, pago: data });
 });
 // DELETE /api/pagos/:id
@@ -209,7 +222,8 @@ router.delete("/:id", async (req, res) => {
 
   // Recalcular el resumen del cliente tras eliminar el pago
   const resumen = await getResumenCliente(pago.clienteId);
-
+  const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
+  await actualizarSaldoCliente(pago.clienteId); // 👈 FALTA ESTA
   res.json({
     message: "Pago eliminado correctamente",
     resumen,
@@ -252,7 +266,8 @@ router.put("/:id", async (req, res) => {
 
   // Obtener el resumen actualizado del cliente
   const resumen = await getResumenCliente(pagoOriginal.clienteId);
-
+  const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
+  await actualizarSaldoCliente(pagoOriginal.clienteId); // 👈 FALTA ESTA
   res.json({
     message: "Pago actualizado correctamente",
     resumen,

@@ -4,6 +4,7 @@ const supabase = require("../supabaseClient");
 const {
   actualizarResumenMensualMaterial,
 } = require("../utils/actualizarResumenMensual");
+const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
 
 // Obtener todos los materiales
 router.get("/", async (req, res) => {
@@ -46,7 +47,7 @@ router.put("/:id", async (req, res) => {
 
   const { data: materialAntes } = await supabase
     .from("materiales")
-    .select("fecha, coste, pagado, cuadrado")
+    .select("fecha, coste, pagado, cuadrado, clienteId")
     .eq("id", req.params.id)
     .single();
 
@@ -88,6 +89,9 @@ router.put("/:id", async (req, res) => {
     }
   }
 
+  // ✅ Recalcular saldo del cliente
+  await actualizarSaldoCliente(materialAntes.clienteId);
+
   res.json({ message: "Material actualizado correctamente" });
 });
 
@@ -97,7 +101,7 @@ router.delete("/:id", async (req, res) => {
 
   const { data: material, error: errorMaterial } = await supabase
     .from("materiales")
-    .select("fecha, coste, pagado, cuadrado")
+    .select("fecha, coste, pagado, cuadrado, clienteId")
     .eq("id", id)
     .single();
 
@@ -115,6 +119,9 @@ router.delete("/:id", async (req, res) => {
       operacion: "restar",
     });
   }
+
+  // ✅ Recalcular saldo del cliente
+  await actualizarSaldoCliente(material.clienteId);
 
   res.json({ message: "Material eliminado correctamente" });
 });
