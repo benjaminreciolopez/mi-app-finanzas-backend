@@ -10,29 +10,34 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Datos inválidos" });
   }
 
-  let errores = [];
+  const updates = await Promise.allSettled(
+    tareas.map(({ id, tipo }) => {
+      if (!id || !["trabajo", "material"].includes(tipo)) {
+        return Promise.resolve({
+          status: "rejected",
+          reason: { id, error: "Tarea inválida" },
+        });
+      }
 
-  for (const tarea of tareas) {
-    const { id, tipo } = tarea;
+      const tabla = tipo === "trabajo" ? "trabajos" : "materiales";
+      const campoCliente = tipo === "trabajo" ? "clienteId" : "clienteid";
 
-    if (!id || !["trabajo", "material"].includes(tipo)) {
-      errores.push({ id, error: "Tarea inválida" });
-      continue;
-    }
+      return supabase
+        .from(tabla)
+        .update({ pagado: 1, cuadrado: 1 })
+        .eq("id", id)
+        .eq(campoCliente, clienteId)
+        .then(() => ({ status: "fulfilled" }))
+        .catch((err) => ({
+          status: "rejected",
+          reason: { id, error: err.message },
+        }));
+    })
+  );
 
-    const tabla = tipo === "trabajo" ? "trabajos" : "materiales";
-    const campoCliente = tipo === "trabajo" ? "clienteId" : "clienteid";
-
-    const { error } = await supabase
-      .from(tabla)
-      .update({ pagado: 1, cuadrado: 1 }) // ← ✅ corregido
-      .eq("id", id)
-      .eq(campoCliente, clienteId);
-
-    if (error) {
-      errores.push({ id, error: error.message });
-    }
-  }
+  const errores = updates
+    .filter((r) => r.status === "rejected")
+    .map((r) => r.reason);
 
   if (errores.length > 0) {
     return res.status(207).json({ parcial: true, errores });

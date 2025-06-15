@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
-// Calcula resumen del cliente sin hacer asignaciones nuevas
+// Calcula resumen del cliente sin asignaciones nuevas
 async function getResumenCliente(clienteId) {
   const { data: cliente } = await supabase
     .from("clientes")
@@ -58,13 +58,6 @@ async function getResumenCliente(clienteId) {
     0
   );
 
-  const totalPagos = (pagos || []).reduce(
-    (acc, p) => acc + (Number(p.cantidad) || 0),
-    0
-  );
-
-  let saldoACuenta = +(totalPagos - totalAsignado).toFixed(2);
-
   let totalPendiente = 0;
   for (const t of trabajosPendientes) {
     const asignado = (asignaciones || [])
@@ -81,17 +74,7 @@ async function getResumenCliente(clienteId) {
 
   const totalPendienteSafe = Number(totalPendiente) || 0;
 
-  // 👇 Aquí aplicamos la corrección final
-  if (totalPendienteSafe <= 0.01) {
-    saldoACuenta = 0;
-  }
-
-  const saldoACuentaSafe = Number(saldoACuenta) || 0;
-
-  const deudaReal = Math.max(
-    0,
-    +(totalPendienteSafe - saldoACuentaSafe).toFixed(2)
-  );
+  const deudaReal = +totalPendienteSafe.toFixed(2);
 
   const totalHorasPendientes = trabajosPendientes.reduce((acc, t) => {
     const asignado = (asignaciones || [])
@@ -107,15 +90,6 @@ async function getResumenCliente(clienteId) {
     acc[id] = (acc[id] || 0) + usado;
     return acc;
   }, {});
-  // Calculamos el saldo final a guardar
-  // ✅ Guardar siempre el saldo disponible, sin condicionar por tareas
-  const saldoDisponible = saldoACuentaSafe;
-
-  // Guardamos el saldoDisponible en la tabla de clientes
-  await supabase
-    .from("clientes")
-    .update({ saldoDisponible })
-    .eq("id", clienteId);
 
   return {
     clienteId: cliente.id,
@@ -127,8 +101,7 @@ async function getResumenCliente(clienteId) {
       0
     ),
     totalDeuda: deudaReal,
-    totalTareasPendientes: totalPendienteSafe, // 👈 añade esto
-    saldoACuenta: saldoACuentaSafe,
+    totalTareasPendientes: totalPendienteSafe,
     pagosUsados: Object.entries(pagosUsados).map(([id, usado]) => ({
       id,
       usado: +usado.toFixed(2),
@@ -198,11 +171,11 @@ router.post("/", async (req, res) => {
 
   res.json({ message: "Pago añadido correctamente", resumen, pago: data });
 });
+
 // DELETE /api/pagos/:id
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
-  // Obtener primero el clienteId del pago
   const { data: pago, error: errorPago } = await supabase
     .from("pagos")
     .select("clienteId")
@@ -213,7 +186,6 @@ router.delete("/:id", async (req, res) => {
     return res.status(404).json({ error: "Pago no encontrado" });
   }
 
-  // Eliminar el pago
   const { error: errorEliminacion } = await supabase
     .from("pagos")
     .delete()
@@ -223,7 +195,6 @@ router.delete("/:id", async (req, res) => {
     return res.status(500).json({ error: "Error al eliminar el pago" });
   }
 
-  // Recalcular el resumen del cliente tras eliminar el pago
   const resumen = await getResumenCliente(pago.clienteId);
 
   res.json({
@@ -231,17 +202,16 @@ router.delete("/:id", async (req, res) => {
     resumen,
   });
 });
+
 // PUT /api/pagos/:id
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { cantidad, fecha, observaciones } = req.body;
 
-  // Validaciones básicas
   if (!cantidad || !fecha || isNaN(cantidad) || cantidad <= 0) {
     return res.status(400).json({ error: "Datos de pago no válidos" });
   }
 
-  // Obtener el clienteId del pago
   const { data: pagoOriginal, error: errorPago } = await supabase
     .from("pagos")
     .select("clienteId")
@@ -252,7 +222,6 @@ router.put("/:id", async (req, res) => {
     return res.status(404).json({ error: "Pago no encontrado" });
   }
 
-  // Actualizar el pago
   const { error: errorUpdate } = await supabase
     .from("pagos")
     .update({
@@ -266,7 +235,6 @@ router.put("/:id", async (req, res) => {
     return res.status(500).json({ error: "Error al actualizar el pago" });
   }
 
-  // Obtener el resumen actualizado del cliente
   const resumen = await getResumenCliente(pagoOriginal.clienteId);
 
   res.json({

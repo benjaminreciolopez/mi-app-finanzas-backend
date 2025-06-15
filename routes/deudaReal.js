@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
-// ✅ Resumen de todos los clientes
+// ✅ Resumen de todos los clientes (sin saldoDisponible ni saldoACuenta)
 router.get("/", async (req, res) => {
   const { data: clientes, error: clientesError } = await supabase
     .from("clientes")
@@ -64,14 +64,11 @@ router.get("/", async (req, res) => {
     ).toFixed(2);
 
     let deudaReal = +(totalTareasPendientes - totalPagos).toFixed(2);
-    let saldoACuenta = +(totalPagos - totalTareasPendientes).toFixed(2);
 
-    // ✅ Corrección: si no quedan tareas ni materiales, saldoACuenta se limpia
+    // ✅ Si no quedan tareas/materiales, deuda = 0
     if (trabajosPendientes.length === 0 && materialesPendientes.length === 0) {
-      saldoACuenta = Math.max(0, saldoACuenta);
       deudaReal = 0;
     } else {
-      saldoACuenta = Math.max(0, saldoACuenta);
       deudaReal = Math.max(0, deudaReal);
     }
 
@@ -89,7 +86,6 @@ router.get("/", async (req, res) => {
       ),
       totalTareasPendientes,
       totalDeuda: deudaReal,
-      saldoACuenta,
     };
   });
 

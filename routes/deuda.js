@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
-// Devuelve trabajos y materiales pendientes (sin usar asignaciones)
+// Devuelve trabajos y materiales pendientes (sin usar asignaciones ni saldoACuenta)
 router.get("/:clienteId/pendientes", async (req, res) => {
   const clienteId = Number(req.params.clienteId);
   if (Number.isNaN(clienteId)) {
@@ -46,30 +46,6 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     return res.status(500).json({ error: "Error al cargar materiales" });
   }
 
-  // Obtener pagos del cliente
-  const { data: pagos } = await supabase
-    .from("pagos")
-    .select("cantidad")
-    .eq("clienteId", clienteId);
-
-  // Obtener asignaciones del cliente
-  const { data: asignaciones } = await supabase
-    .from("asignaciones_pago")
-    .select("usado")
-    .eq("clienteid", clienteId);
-
-  const totalPagado = (pagos || []).reduce(
-    (acc, p) => acc + (parseFloat(p.cantidad) || 0),
-    0
-  );
-
-  const totalAsignado = (asignaciones || []).reduce(
-    (acc, a) => acc + (parseFloat(a.usado) || 0),
-    0
-  );
-
-  const saldoACuenta = +(totalPagado - totalAsignado).toFixed(2);
-
   // Mapear trabajos
   const trabajosPendientes = (trabajos || []).map((t) => {
     const horas = parseFloat(t.horas) || 0;
@@ -98,7 +74,6 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   });
 
   res.json({
-    saldoACuenta,
     trabajos: trabajosPendientes.sort(
       (a, b) => new Date(a.fecha) - new Date(b.fecha)
     ),
