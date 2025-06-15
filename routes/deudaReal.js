@@ -14,7 +14,7 @@ router.get("/", async (req, res) => {
 
   const { data: trabajos, error: trabajosError } = await supabase
     .from("trabajos")
-    .select("id, clienteid, fecha, horas, cuadrado");
+    .select("id, clienteId, fecha, horas, cuadrado");
 
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
@@ -22,7 +22,7 @@ router.get("/", async (req, res) => {
 
   const { data: pagos, error: pagosError } = await supabase
     .from("pagos")
-    .select("id, clienteid, cantidad");
+    .select("id, clienteId, cantidad");
 
   if (trabajosError || materialesError || pagosError) {
     console.error("Errores al obtener datos:");
@@ -35,11 +35,11 @@ router.get("/", async (req, res) => {
   const resumen = clientes.map((cliente) => {
     const precioHora = cliente.precioHora ?? 0;
 
-    const trabajosCliente = trabajos.filter((t) => t.clienteid === cliente.id);
+    const trabajosCliente = trabajos.filter((t) => t.clienteId === cliente.id);
     const materialesCliente = materiales.filter(
       (m) => m.clienteid === cliente.id
     );
-    const pagosCliente = pagos.filter((p) => p.clienteid === cliente.id);
+    const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
 
     const trabajosPendientes = trabajosCliente.filter((t) => !t.cuadrado);
     const materialesPendientes = materialesCliente.filter((m) => !m.cuadrado);
