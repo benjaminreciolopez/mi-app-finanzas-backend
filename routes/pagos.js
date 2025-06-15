@@ -269,7 +269,4 @@ router.put("/:id", async (req, res) => {
   });
 });
 
-module.exports = {
-  router,
-  getResumenCliente,
-};
+module.exports = router;
