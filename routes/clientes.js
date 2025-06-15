@@ -129,15 +129,17 @@ router.delete("/:id", async (req, res) => {
 // ✅ Actualizar solo el saldoDisponible del cliente
 router.put("/:id/saldo", async (req, res) => {
   const clienteId = Number(req.params.id);
-  const nuevoSaldo = Number(req.body.nuevoSaldo); // ✅ Usar "nuevoSaldo"
+  const nuevoSaldo = Number(req.body.nuevoSaldo);
 
   if (Number.isNaN(clienteId) || Number.isNaN(nuevoSaldo)) {
     return res.status(400).json({ error: "Datos inválidos" });
   }
 
+  const saldoSeguro = Math.max(0, nuevoSaldo); // ⛑️ Protege contra negativos
+
   const { error } = await supabase
     .from("clientes")
-    .update({ saldoDisponible: nuevoSaldo })
+    .update({ saldoDisponible: saldoSeguro })
     .eq("id", clienteId);
 
   if (error) {
