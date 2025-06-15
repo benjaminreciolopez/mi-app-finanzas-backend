@@ -47,21 +47,29 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   }
 
   // Mapear trabajos con su coste
-  const trabajosPendientes = trabajos.map((t) => ({
-    id: t.id,
-    tipo: "trabajo",
-    fecha: t.fecha,
-    horas: t.horas,
-    precioHora,
-    coste: +(t.horas * precioHora).toFixed(2),
-  }));
+  const trabajosPendientes = trabajos.map((t) => {
+    const coste = +(t.horas * precioHora).toFixed(2);
+    return {
+      id: t.id,
+      tipo: "trabajo",
+      fecha: t.fecha,
+      horas: t.horas,
+      precioHora,
+      coste,
+      pendiente: coste, // 👈 añadido
+    };
+  });
 
-  const materialesPendientes = materiales.map((m) => ({
-    id: m.id,
-    tipo: "material",
-    fecha: m.fecha,
-    coste: +m.coste.toFixed(2),
-  }));
+  const materialesPendientes = materiales.map((m) => {
+    const coste = +m.coste.toFixed(2);
+    return {
+      id: m.id,
+      tipo: "material",
+      fecha: m.fecha,
+      coste,
+      pendiente: coste, // 👈 añadido
+    };
+  });
 
   res.json({
     trabajos: trabajosPendientes.sort(
