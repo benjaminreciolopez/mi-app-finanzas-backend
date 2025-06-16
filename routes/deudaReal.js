@@ -17,9 +17,12 @@ router.get("/", async (req, res) => {
     .from("trabajos")
     .select("id, clienteId, fecha, horas, cuadrado");
 
-  if (trabajosError || !trabajos) {
-    console.error("❌ Error al obtener trabajos:", trabajosError?.message);
-    return res.status(500).json({ error: "Error al obtener trabajos" });
+  if (trabajosError || materialesError || pagosError) {
+    console.error("❌ Error al obtener datos desde Supabase:");
+    console.error("Trabajos error:", trabajosError);
+    console.error("Materiales error:", materialesError);
+    console.error("Pagos error:", pagosError);
+    return res.status(500).json({ error: "Error al obtener datos" });
   }
 
   const { data: materiales, error: materialesError } = await supabase
