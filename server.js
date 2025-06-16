@@ -15,17 +15,20 @@ const evolucionRoutes = require("./routes/evolucion");
 const deudaRealRoutes = require("./routes/deudaReal");
 const deudaRoutes = require("./routes/deuda");
 const estadosPagoRoutes = require("./routes/estadosPago");
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Orígenes permitidos (producción + builds temporales de Vercel)
+// Orígenes permitidos (producción + ramas + previews de Vercel)
 const allowedOrigins = [
   "http://localhost:5173",
   "https://mi-app-web.onrender.com",
   "https://mi-app-finanzas-frontend.vercel.app",
-  /^https:\/\/mi-app-finanzas-frontend-git-.*\.vercel\.app$/,
+  /^https:\/\/mi-app-finanzas-frontend-git-.*\.vercel\.app$/, // ramas
+  /^https:\/\/mi-app-finanzas-frontend-.*\.vercel\.app$/, // previews o deploys temporales
 ];
 
+// Middleware CORS dinámico
 app.use(
   cors({
     origin: (origin, callback) => {
