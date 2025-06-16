@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
 
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
-    .select("id, clienteid, fecha, coste, cuadrado");
+    .select("id, clienteid:clienteId, fecha, coste, cuadrado");
 
   const { data: pagos, error: pagosError } = await supabase
     .from("pagos")
