@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
 
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
-    .select("id, clienteid:clienteId, fecha, coste, cuadrado");
+    .select("id, clienteid, fecha, coste, cuadrado");
 
   const { data: pagos, error: pagosError } = await supabase
     .from("pagos")
@@ -31,6 +31,10 @@ router.get("/", async (req, res) => {
     if (pagosError) console.error("Pagos:", pagosError.message);
     return res.status(500).json({ error: "Error al obtener datos" });
   }
+  console.log("📦 Clientes:", clientes.length);
+  console.log("🔧 Trabajos:", trabajos.length);
+  console.log("🧱 Materiales:", materiales.length);
+  console.log("💳 Pagos:", pagos.length);
 
   const resumen = clientes.map((cliente) => {
     const precioHora = cliente.precioHora ?? 0;
@@ -88,6 +92,7 @@ router.get("/", async (req, res) => {
       totalDeuda: deudaReal,
     };
   });
+  console.log("🧾 RESUMEN:", resumen);
 
   res.json(resumen);
 });
