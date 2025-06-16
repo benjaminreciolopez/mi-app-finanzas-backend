@@ -4,6 +4,7 @@ const supabase = require("../supabaseClient");
 const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
 
 // --- Utilidad para devolver resumen de cliente con saldoDisponible ---
+// --- Utilidad para devolver resumen de cliente con saldoDisponible ---
 async function getResumenCliente(clienteId) {
   const { data: cliente } = await supabase
     .from("clientes")
@@ -25,6 +26,16 @@ async function getResumenCliente(clienteId) {
     .from("materiales")
     .select("id, fecha, coste, cuadrado")
     .eq("clienteid", clienteId);
+
+  // 👇 Nuevo: Suma todos los pagos
+  const { data: pagos } = await supabase
+    .from("pagos")
+    .select("cantidad")
+    .eq("clienteId", clienteId);
+
+  const totalPagado = pagos
+    ? pagos.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0)
+    : 0;
 
   const trabajosPendientes = (trabajos || []).filter((t) => t.cuadrado !== 1);
   const materialesPendientes = (materiales || []).filter(
@@ -56,7 +67,7 @@ async function getResumenCliente(clienteId) {
     nombre: cliente.nombre,
     totalHorasPendientes: +totalHorasPendientes.toFixed(2),
     totalMaterialesPendientes: +totalMaterialesPendientes.toFixed(2),
-    totalPagado: +(Number(cliente.saldoDisponible) || 0),
+    totalPagado: +totalPagado.toFixed(2), // ← ahora bien calculado
     totalDeuda,
     totalTareasPendientes: +totalTareasPendientes.toFixed(2),
     saldoACuenta: +saldoDisponible.toFixed(2),
