@@ -4,10 +4,10 @@ const supabase = require("../supabaseClient");
 
 // ✅ Resumen de todos los clientes (con logs de depuración)
 router.get("/", async (req, res) => {
-  // 1. Obtener clientes
+  // 1. Obtener clientes (incluyendo saldoDisponible)
   const { data: clientes, error: clientesError } = await supabase
     .from("clientes")
-    .select("id, nombre, precioHora");
+    .select("id, nombre, precioHora, saldoDisponible"); // <--- añadido saldoDisponible
 
   if (clientesError || !clientes) {
     console.error("❌ Error al obtener clientes:", clientesError?.message);
@@ -46,6 +46,7 @@ router.get("/", async (req, res) => {
   try {
     const resumen = clientes.map((cliente) => {
       const precioHora = cliente.precioHora ?? 0;
+      const saldoACuenta = Number(cliente.saldoDisponible) || 0; // <--- aquí
 
       const trabajosCliente = trabajos.filter(
         (t) => t.clienteId === cliente.id
@@ -58,6 +59,7 @@ router.get("/", async (req, res) => {
       const trabajosPendientes = trabajosCliente.filter((t) => !t.cuadrado);
       const materialesPendientes = materialesCliente.filter((m) => !m.cuadrado);
 
+      // No uses totalPagos para calcular la deuda, sino saldoACuenta
       const totalPagos = pagosCliente.reduce(
         (acc, p) => acc + Number(p.cantidad),
         0
@@ -77,16 +79,9 @@ router.get("/", async (req, res) => {
         totalPendienteTrabajo + totalPendienteMaterial
       ).toFixed(2);
 
-      let deudaReal = +(totalTareasPendientes - totalPagos).toFixed(2);
-
-      if (
-        trabajosPendientes.length === 0 &&
-        materialesPendientes.length === 0
-      ) {
-        deudaReal = 0;
-      } else {
-        deudaReal = Math.max(0, deudaReal);
-      }
+      // La deuda real es el total de tareas pendientes menos el saldo disponible
+      let deudaReal = +(totalTareasPendientes - saldoACuenta).toFixed(2);
+      deudaReal = Math.max(0, deudaReal);
 
       return {
         clienteId: cliente.id,
@@ -102,6 +97,7 @@ router.get("/", async (req, res) => {
         ),
         totalTareasPendientes,
         totalDeuda: deudaReal,
+        saldoACuenta, // <--- para que el frontend lo muestre
       };
     });
 
