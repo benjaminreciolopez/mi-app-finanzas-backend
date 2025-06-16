@@ -1,7 +1,12 @@
 const supabase = require("../supabaseClient");
 
+/**
+ * Actualiza el saldo disponible de un cliente.
+ * El saldo es el sobrante de pagos realizados menos lo que ya está cuadrado (saldado).
+ * Nunca puede ser negativo.
+ */
 async function actualizarSaldoCliente(clienteId) {
-  // 1. Precio hora del cliente
+  // 1. Obtener precioHora del cliente
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("precioHora")
@@ -12,10 +17,9 @@ async function actualizarSaldoCliente(clienteId) {
     console.error("❌ Error obteniendo cliente:", errorCliente?.message);
     return;
   }
-
   const precioHora = Number(cliente.precioHora) || 0;
 
-  // 2. Trabajos y materiales saldados (cuadrados = 1)
+  // 2. Obtener todos los trabajos y materiales YA CUADRADOS (saldados)
   const { data: trabajosCuadrados } = await supabase
     .from("trabajos")
     .select("horas")
@@ -28,7 +32,7 @@ async function actualizarSaldoCliente(clienteId) {
     .eq("clienteid", clienteId)
     .eq("cuadrado", 1);
 
-  // 3. Total pagado (todos los pagos)
+  // 3. Obtener TODOS los pagos realizados por el cliente
   const { data: pagos, error: errorPagos } = await supabase
     .from("pagos")
     .select("cantidad")
@@ -42,7 +46,7 @@ async function actualizarSaldoCliente(clienteId) {
   const totalPagado =
     pagos?.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0) || 0;
 
-  // 4. Suma de lo que YA está saldado
+  // 4. Sumar lo que YA está cuadrado (trabajos/materiales)
   const totalCuadrado =
     (trabajosCuadrados?.reduce(
       (acc, t) => acc + (Number(t.horas) || 0) * precioHora,
@@ -51,12 +55,11 @@ async function actualizarSaldoCliente(clienteId) {
     (materialesCuadrados?.reduce((acc, m) => acc + (Number(m.coste) || 0), 0) ||
       0);
 
-  // 5. El saldo a cuenta es lo pagado MENOS lo que YA está cuadrado
+  // 5. El saldo a cuenta es el sobrante de los pagos menos lo ya cuadrado
   let saldoDisponible = +(totalPagado - totalCuadrado).toFixed(2);
-  // Nunca puede ser negativo
-  saldoDisponible = Math.max(0, saldoDisponible);
+  saldoDisponible = Math.max(0, saldoDisponible); // Nunca negativo
 
-  // 6. Actualizar la tabla
+  // 6. Actualizar la columna saldoDisponible
   const { error: errorUpdate } = await supabase
     .from("clientes")
     .update({ saldoDisponible })
