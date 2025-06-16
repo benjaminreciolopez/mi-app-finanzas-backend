@@ -62,10 +62,11 @@ async function actualizarSaldoCliente(clienteId) {
   // Calcular saldo disponible
   let saldoDisponible = +(totalPagado - deudaTotal).toFixed(2);
 
+  // Si no queda deuda (todo cuadrado), saldoDisponible puede ser positivo (sobrante), sino siempre 0
   if (deudaTotal <= 0.01) {
-    saldoDisponible = Math.max(0, saldoDisponible); // proteger contra valores negativos
+    saldoDisponible = saldoDisponible > 0 ? saldoDisponible : 0;
   } else {
-    saldoDisponible = Math.max(0, saldoDisponible);
+    saldoDisponible = 0;
   }
 
   // Actualizar el saldo en la tabla clientes
