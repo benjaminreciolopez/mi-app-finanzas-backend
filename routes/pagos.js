@@ -3,18 +3,18 @@ const router = express.Router();
 const supabase = require("../supabaseClient");
 const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
 
-// Calcula resumen del cliente sin asignaciones nuevas
+// --- Utilidad para devolver resumen de cliente con saldoDisponible ---
 async function getResumenCliente(clienteId) {
   const { data: cliente } = await supabase
     .from("clientes")
-    .select("id, nombre, precioHora, saldoACuenta")
+    .select("id, nombre, precioHora, saldoDisponible")
     .eq("id", clienteId)
     .single();
 
   if (!cliente) return null;
 
   const precioHora = Number(cliente.precioHora) || 0;
-  const saldoACuenta = Number(cliente.saldoACuenta) || 0;
+  const saldoDisponible = Number(cliente.saldoDisponible) || 0;
 
   const { data: trabajos } = await supabase
     .from("trabajos")
@@ -43,7 +43,7 @@ async function getResumenCliente(clienteId) {
     ) + materialesPendientes.reduce((acc, m) => acc + Number(m.coste || 0), 0);
 
   const totalDeuda = Math.max(
-    +(totalTareasPendientes - saldoACuenta).toFixed(2),
+    +(totalTareasPendientes - saldoDisponible).toFixed(2),
     0
   );
   const totalMaterialesPendientes = materialesPendientes.reduce(
@@ -56,15 +56,15 @@ async function getResumenCliente(clienteId) {
     nombre: cliente.nombre,
     totalHorasPendientes: +totalHorasPendientes.toFixed(2),
     totalMaterialesPendientes: +totalMaterialesPendientes.toFixed(2),
-    totalPagado: +(Number(cliente.saldoACuenta) || 0),
+    totalPagado: +(Number(cliente.saldoDisponible) || 0), // ¡OJO! Aquí muestras el saldo actual
     totalDeuda,
     totalTareasPendientes: +totalTareasPendientes.toFixed(2),
-    saldoACuenta: +saldoACuenta.toFixed(2),
-    pagosUsados: [], // Ya no se usa
+    saldoACuenta: +saldoDisponible.toFixed(2), // El frontend lo muestra como "a cuenta"
+    pagosUsados: [],
   };
 }
 
-// GET /api/pagos
+// --- GET: todos los pagos ---
 router.get("/", async (req, res) => {
   const { data, error } = await supabase
     .from("pagos")
@@ -75,7 +75,7 @@ router.get("/", async (req, res) => {
   res.json({ data });
 });
 
-// POST /api/pagos
+// --- POST: nuevo pago ---
 router.post("/", async (req, res) => {
   const { clienteId, cantidad, fecha, observaciones } = req.body;
 
@@ -83,6 +83,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Datos de pago no válidos" });
   }
 
+  // Previene duplicados exactos
   const { data: pagoExistente } = await supabase
     .from("pagos")
     .select("id")
@@ -94,6 +95,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Este pago ya existe" });
   }
 
+  // Busca nombre cliente (puede evitarse si no lo usas en la tabla pagos)
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("nombre")
@@ -104,6 +106,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Cliente no encontrado" });
   }
 
+  // Inserta pago
   const { data, error } = await supabase
     .from("pagos")
     .insert([
@@ -122,13 +125,15 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
-  const resumen = await getResumenCliente(clienteId);
+  // 1) Recalcula saldo del cliente
   await actualizarSaldoCliente(clienteId);
+  // 2) El resumen reflejará el saldo actualizado
+  const resumen = await getResumenCliente(clienteId);
 
   res.json({ message: "Pago añadido correctamente", resumen, pago: data });
 });
 
-// DELETE /api/pagos/:id
+// --- DELETE: elimina un pago ---
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -150,8 +155,10 @@ router.delete("/:id", async (req, res) => {
   if (errorEliminacion) {
     return res.status(500).json({ error: "Error al eliminar el pago" });
   }
-  await actualizarSaldoCliente(pago.clienteId);
 
+  // 1) Actualiza saldo
+  await actualizarSaldoCliente(pago.clienteId);
+  // 2) Devuelve resumen actualizado
   const resumen = await getResumenCliente(pago.clienteId);
 
   res.json({
@@ -160,7 +167,7 @@ router.delete("/:id", async (req, res) => {
   });
 });
 
-// PUT /api/pagos/:id
+// --- PUT: editar pago ---
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { cantidad, fecha, observaciones } = req.body;
@@ -191,8 +198,10 @@ router.put("/:id", async (req, res) => {
   if (errorUpdate) {
     return res.status(500).json({ error: "Error al actualizar el pago" });
   }
-  await actualizarSaldoCliente(pagoOriginal.clienteId);
 
+  // 1) Actualiza saldo
+  await actualizarSaldoCliente(pagoOriginal.clienteId);
+  // 2) Devuelve resumen actualizado
   const resumen = await getResumenCliente(pagoOriginal.clienteId);
 
   res.json({
