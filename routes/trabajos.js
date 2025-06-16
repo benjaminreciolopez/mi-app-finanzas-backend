@@ -1,5 +1,4 @@
 const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
-
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
@@ -44,14 +43,17 @@ router.post("/", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  res.json({ id: data.id }); // ✅ ESTO FALTABA
+  // 👇 Recalcula saldo tras crear trabajo
+  await actualizarSaldoCliente(clienteId);
+
+  res.json({ id: data.id });
 });
 
-// Actualizar trabajo (estado o campos generales)
+// Actualizar trabajo
 router.put("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
 
-  // Obtener el estado ANTERIOR del trabajo (antes de actualizar)
+  // Estado ANTERIOR
   const { data: trabajoAntes, error: errorTrabajo } = await supabase
     .from("trabajos")
     .select("fecha, horas, pagado, cuadrado, clienteId")
@@ -62,7 +64,7 @@ router.put("/:id", async (req, res) => {
     return res.status(404).json({ error: "Trabajo no encontrado" });
   }
 
-  // Actualizar el trabajo con los datos nuevos
+  // Actualiza el trabajo
   const { error } = await supabase
     .from("trabajos")
     .update(req.body)
@@ -70,7 +72,7 @@ router.put("/:id", async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
 
-  // Calcular si hay cambio de estado pagado/cuadrado
+  // Actualiza resumen mensual si cambia pagado/cuadrado
   const pagadoAntes = trabajoAntes.pagado;
   const cuadradoAntes = trabajoAntes.cuadrado;
   const pagadoAhora =
@@ -110,7 +112,7 @@ router.put("/:id", async (req, res) => {
     }
   }
 
-  // ⚠️ MUY IMPORTANTE: recalcular saldo SOLO después de todo lo demás
+  // ⚠️ Recalcula SIEMPRE el saldo (aunque no haya cambios en pagado/cuadrado)
   await actualizarSaldoCliente(trabajoAntes.clienteId);
 
   res.json({ updated: true });
@@ -120,18 +122,17 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
 
-  // Busca trabajo antes de borrarlo
+  // Busca el trabajo antes de borrarlo
   const { data: trabajo } = await supabase
     .from("trabajos")
     .select("fecha, horas, pagado, cuadrado, clienteId")
     .eq("id", id)
     .single();
 
-  // Elimina el trabajo
   const { error } = await supabase.from("trabajos").delete().eq("id", id);
   if (error) return res.status(400).json({ error: error.message });
 
-  // Si estaba pagado/cuadrado, resta del resumen
+  // Actualiza resumen mensual si era pagado/cuadrado
   if (trabajo && (trabajo.pagado === 1 || trabajo.cuadrado === 1)) {
     const { data: cliente } = await supabase
       .from("clientes")
@@ -145,8 +146,12 @@ router.delete("/:id", async (req, res) => {
         precioHora: cliente.precioHora,
         operacion: "restar",
       });
-      await actualizarSaldoCliente(trabajo.clienteId);
     }
+  }
+
+  // ⚠️ Recalcula SIEMPRE el saldo, aunque no estuviera pagado/cuadrado
+  if (trabajo) {
+    await actualizarSaldoCliente(trabajo.clienteId);
   }
 
   res.json({ deleted: true });

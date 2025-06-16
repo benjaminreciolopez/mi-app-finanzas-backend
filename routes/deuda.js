@@ -9,7 +9,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     return res.status(400).json({ error: "clienteId inválido" });
   }
 
-  // Obtener trabajos no saldados
+  // 1. Obtener trabajos no saldados
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
     .select("id, fecha, horas")
@@ -21,7 +21,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     return res.status(500).json({ error: "Error al cargar trabajos" });
   }
 
-  // Obtener precioHora del cliente
+  // 2. Obtener precioHora del cliente
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("precioHora")
@@ -31,13 +31,12 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   if (errorCliente || !cliente) {
     return res.status(400).json({ error: "Cliente no encontrado" });
   }
-
   const precioHora = parseFloat(cliente.precioHora) || 0;
 
-  // Obtener materiales no saldados
+  // 3. Obtener materiales no saldados (incluyendo descripción)
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
-    .select("id, fecha, coste")
+    .select("id, fecha, coste, descripcion")
     .eq("clienteid", clienteId)
     .eq("cuadrado", 0);
 
@@ -46,7 +45,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     return res.status(500).json({ error: "Error al cargar materiales" });
   }
 
-  // Mapear trabajos
+  // 4. Mapear trabajos
   const trabajosPendientes = (trabajos || []).map((t) => {
     const horas = parseFloat(t.horas) || 0;
     const coste = +(horas * precioHora).toFixed(2);
@@ -61,7 +60,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
     };
   });
 
-  // Mapear materiales
+  // 5. Mapear materiales (añade descripción si la tienes)
   const materialesPendientes = (materiales || []).map((m) => {
     const coste = parseFloat(m.coste) || 0;
     return {
@@ -70,15 +69,18 @@ router.get("/:clienteId/pendientes", async (req, res) => {
       fecha: m.fecha,
       coste,
       pendiente: coste,
+      descripcion: m.descripcion || "", // si la columna existe
     };
   });
 
+  // 6. Ordenar por fecha (más antiguos primero)
+  const safeDate = (str) => (str ? new Date(str).getTime() : 0);
   res.json({
     trabajos: trabajosPendientes.sort(
-      (a, b) => new Date(a.fecha) - new Date(b.fecha)
+      (a, b) => safeDate(a.fecha) - safeDate(b.fecha)
     ),
     materiales: materialesPendientes.sort(
-      (a, b) => new Date(a.fecha) - new Date(b.fecha)
+      (a, b) => safeDate(a.fecha) - safeDate(b.fecha)
     ),
   });
 });

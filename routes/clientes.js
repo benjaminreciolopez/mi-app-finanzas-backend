@@ -34,6 +34,7 @@ router.post("/", async (req, res) => {
 
   precioHora = Number(precioHora);
 
+  // Busca el mayor valor de orden para asignar el siguiente
   const { data: existentes, error: errorConsulta } = await supabase
     .from("clientes")
     .select("orden")
@@ -82,10 +83,11 @@ router.put("/orden", async (req, res) => {
   }
 });
 
-// ✅ Actualizar cliente (nombre y precioHora)
+// ✅ Actualizar cliente (nombre y precioHora, nunca saldoDisponible)
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
-  delete req.body.saldoDisponible; // 🛡️ Protección
+  // Protección: nunca permitas actualizar saldoDisponible desde aquí
+  if ("saldoDisponible" in req.body) delete req.body.saldoDisponible;
 
   const campos = {};
   if (req.body.nombre !== undefined) campos.nombre = req.body.nombre;
@@ -126,7 +128,7 @@ router.delete("/:id", async (req, res) => {
   res.json({ message: "Cliente eliminado" });
 });
 
-// ✅ Actualizar solo el saldoDisponible del cliente
+// ✅ Actualizar solo el saldoDisponible del cliente (solo saldo)
 router.put("/:id/saldo", async (req, res) => {
   const clienteId = Number(req.params.id);
   const nuevoSaldo = Number(req.body.nuevoSaldo);
@@ -135,7 +137,7 @@ router.put("/:id/saldo", async (req, res) => {
     return res.status(400).json({ error: "Datos inválidos" });
   }
 
-  const saldoSeguro = Math.max(0, nuevoSaldo); // ⛑️ Protege contra negativos
+  const saldoSeguro = Math.max(0, nuevoSaldo); // No permite negativos
 
   const { error } = await supabase
     .from("clientes")

@@ -1,14 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
+const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
 
 // Marcar tareas como pagadas y cuadradas sin asignaciones
 router.post("/", async (req, res) => {
   const { clienteId, tareas } = req.body;
 
-  if (!clienteId || !Array.isArray(tareas)) {
+  if (!clienteId || !Array.isArray(tareas) || tareas.length === 0) {
     return res.status(400).json({ error: "Datos inválidos" });
   }
+
+  let algunCambio = false;
 
   const updates = await Promise.allSettled(
     tareas.map(({ id, tipo }) => {
@@ -27,7 +30,16 @@ router.post("/", async (req, res) => {
         .update({ pagado: 1, cuadrado: 1 })
         .eq("id", id)
         .eq(campoCliente, clienteId)
-        .then(() => ({ status: "fulfilled" }))
+        .then((res) => {
+          if (res.error) {
+            return {
+              status: "rejected",
+              reason: { id, error: res.error.message },
+            };
+          }
+          algunCambio = true;
+          return { status: "fulfilled" };
+        })
         .catch((err) => ({
           status: "rejected",
           reason: { id, error: err.message },
@@ -39,7 +51,13 @@ router.post("/", async (req, res) => {
     .filter((r) => r.status === "rejected")
     .map((r) => r.reason);
 
+  // ✅ Recalcula el saldo SOLO si alguna tarea ha cambiado
+  if (algunCambio) {
+    await actualizarSaldoCliente(clienteId);
+  }
+
   if (errores.length > 0) {
+    console.warn("🟡 Hubo errores al cuadrar tareas:", errores);
     return res.status(207).json({ parcial: true, errores });
   }
 

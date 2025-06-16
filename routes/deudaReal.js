@@ -2,12 +2,12 @@ const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
 
-// ✅ Resumen de todos los clientes (con logs de depuración)
+// ✅ Resumen de todos los clientes
 router.get("/", async (req, res) => {
   // 1. Obtener clientes (incluyendo saldoDisponible)
   const { data: clientes, error: clientesError } = await supabase
     .from("clientes")
-    .select("id, nombre, precioHora, saldoDisponible"); // <--- añadido saldoDisponible
+    .select("id, nombre, precioHora, saldoDisponible");
 
   if (clientesError || !clientes) {
     console.error("❌ Error al obtener clientes:", clientesError?.message);
@@ -22,7 +22,7 @@ router.get("/", async (req, res) => {
   // 3. Obtener materiales (forzamos clienteId en vez de clienteid)
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
-    .select("id, clienteId:clienteid, fecha, coste, cuadrado"); // <-- alias aquí
+    .select("id, clienteId:clienteid, fecha, coste, cuadrado");
 
   // 4. Obtener pagos
   const { data: pagos, error: pagosError } = await supabase
@@ -45,8 +45,8 @@ router.get("/", async (req, res) => {
 
   try {
     const resumen = clientes.map((cliente) => {
-      const precioHora = cliente.precioHora ?? 0;
-      const saldoACuenta = Number(cliente.saldoDisponible) || 0; // <--- aquí
+      const precioHora = Number(cliente.precioHora) || 0;
+      const saldoACuenta = Number(cliente.saldoDisponible) || 0;
 
       const trabajosCliente = trabajos.filter(
         (t) => t.clienteId === cliente.id
@@ -56,48 +56,46 @@ router.get("/", async (req, res) => {
       );
       const pagosCliente = pagos.filter((p) => p.clienteId === cliente.id);
 
+      // Trabajos/materiales pendientes (no cuadrado)
       const trabajosPendientes = trabajosCliente.filter((t) => !t.cuadrado);
       const materialesPendientes = materialesCliente.filter((m) => !m.cuadrado);
 
-      // No uses totalPagos para calcular la deuda, sino saldoACuenta
+      // Total de pagos hechos (solo informativo, no para cálculo de deuda)
       const totalPagos = pagosCliente.reduce(
-        (acc, p) => acc + Number(p.cantidad),
+        (acc, p) => acc + Number(p.cantidad || 0),
         0
       );
 
+      // Cálculo de pendientes
       const totalPendienteTrabajo = trabajosPendientes.reduce(
-        (acc, t) => acc + (t.horas || 0) * precioHora,
+        (acc, t) => acc + (Number(t.horas) || 0) * precioHora,
         0
       );
-
       const totalPendienteMaterial = materialesPendientes.reduce(
-        (acc, m) => acc + (m.coste || 0),
+        (acc, m) => acc + (Number(m.coste) || 0),
         0
       );
-
       const totalTareasPendientes = +(
         totalPendienteTrabajo + totalPendienteMaterial
       ).toFixed(2);
 
-      // La deuda real es el total de tareas pendientes menos el saldo disponible
+      // Deuda real: pendiente menos saldoACuenta, nunca negativo
       let deudaReal = +(totalTareasPendientes - saldoACuenta).toFixed(2);
       deudaReal = Math.max(0, deudaReal);
 
       return {
         clienteId: cliente.id,
         nombre: cliente.nombre,
-        totalPagado: totalPagos,
-        totalHorasPendientes: trabajosPendientes.reduce(
-          (acc, t) => acc + (t.horas || 0),
-          0
-        ),
-        totalMaterialesPendientes: materialesPendientes.reduce(
-          (acc, m) => acc + (m.coste || 0),
-          0
-        ),
+        totalPagado: +totalPagos.toFixed(2), // solo informativo
+        totalHorasPendientes: +trabajosPendientes
+          .reduce((acc, t) => acc + (Number(t.horas) || 0), 0)
+          .toFixed(2),
+        totalMaterialesPendientes: +materialesPendientes
+          .reduce((acc, m) => acc + (Number(m.coste) || 0), 0)
+          .toFixed(2),
         totalTareasPendientes,
         totalDeuda: deudaReal,
-        saldoACuenta, // <--- para que el frontend lo muestre
+        saldoACuenta: +saldoACuenta.toFixed(2), // para el frontend
       };
     });
 

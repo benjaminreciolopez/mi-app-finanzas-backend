@@ -38,34 +38,42 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
+  // ✅ Recalcula saldo tras añadir material
+  await actualizarSaldoCliente(clienteId);
+
   res.json({ message: "Material añadido correctamente", id: data?.id });
 });
 
-// Actualizar material (pagado/cuadrado)
+// Actualizar material (pagado/cuadrado/cualquier campo)
 router.put("/:id", async (req, res) => {
-  const { pagado, cuadrado } = req.body;
+  const id = req.params.id;
 
-  const { data: materialAntes } = await supabase
+  // Obtiene estado anterior
+  const { data: materialAntes, error: errorAntes } = await supabase
     .from("materiales")
     .select("fecha, coste, pagado, cuadrado, clienteId")
-    .eq("id", req.params.id)
+    .eq("id", id)
     .single();
 
-  const updateFields = {};
-  if (pagado !== undefined) updateFields.pagado = pagado;
-  if (cuadrado !== undefined) updateFields.cuadrado = cuadrado;
+  if (errorAntes || !materialAntes) {
+    return res.status(404).json({ error: "Material no encontrado" });
+  }
 
+  // Actualiza el material (puede cambiar cualquier campo)
   const { error } = await supabase
     .from("materiales")
-    .update(updateFields)
-    .eq("id", req.params.id);
+    .update(req.body)
+    .eq("id", id);
 
   if (error) return res.status(400).json({ error: error.message });
 
-  const pagadoAntes = materialAntes?.pagado;
-  const cuadradoAntes = materialAntes?.cuadrado;
-  const pagadoAhora = pagado !== undefined ? pagado : pagadoAntes;
-  const cuadradoAhora = cuadrado !== undefined ? cuadrado : cuadradoAntes;
+  // Compara y actualiza resumen mensual si cambia pagado/cuadrado
+  const pagadoAntes = materialAntes.pagado;
+  const cuadradoAntes = materialAntes.cuadrado;
+  const pagadoAhora =
+    req.body.pagado !== undefined ? req.body.pagado : pagadoAntes;
+  const cuadradoAhora =
+    req.body.cuadrado !== undefined ? req.body.cuadrado : cuadradoAntes;
 
   if (pagadoAntes !== pagadoAhora || cuadradoAntes !== cuadradoAhora) {
     if (
@@ -89,7 +97,7 @@ router.put("/:id", async (req, res) => {
     }
   }
 
-  // ✅ Recalcular saldo del cliente
+  // ✅ Recalcula saldo del cliente SIEMPRE, aunque solo cambies el coste o la fecha
   await actualizarSaldoCliente(materialAntes.clienteId);
 
   res.json({ message: "Material actualizado correctamente" });
@@ -99,6 +107,7 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const id = req.params.id;
 
+  // Busca material antes de borrarlo
   const { data: material, error: errorMaterial } = await supabase
     .from("materiales")
     .select("fecha, coste, pagado, cuadrado, clienteId")
@@ -109,9 +118,11 @@ router.delete("/:id", async (req, res) => {
     return res.status(404).json({ error: "Material no encontrado" });
   }
 
+  // Elimina
   const { error } = await supabase.from("materiales").delete().eq("id", id);
   if (error) return res.status(400).json({ error: error.message });
 
+  // Si estaba saldado, resta del resumen mensual
   if (material.pagado === 1 || material.cuadrado === 1) {
     await actualizarResumenMensualMaterial({
       fecha: material.fecha,
@@ -120,7 +131,7 @@ router.delete("/:id", async (req, res) => {
     });
   }
 
-  // ✅ Recalcular saldo del cliente
+  // ✅ Recalcula saldo SIEMPRE, aunque no estuviera pagado/cuadrado
   await actualizarSaldoCliente(material.clienteId);
 
   res.json({ message: "Material eliminado correctamente" });

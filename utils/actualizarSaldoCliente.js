@@ -1,7 +1,7 @@
 const supabase = require("../supabaseClient");
 
-// Calcula el saldoDisponible como: totalPagado - (trabajosCuadrados + materialesCuadrados)
 async function actualizarSaldoCliente(clienteId) {
+  // 1. Obtener cliente para conocer precioHora
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("precioHora")
@@ -12,35 +12,37 @@ async function actualizarSaldoCliente(clienteId) {
     console.error("❌ Error obteniendo cliente:", errorCliente?.message);
     return;
   }
+
   const precioHora = Number(cliente.precioHora) || 0;
 
-  // Trabajos y materiales CUADRADOS (pagados)
-  const { data: trabajosCuadrados, error: errorTrabajosC } = await supabase
+  // 2. Obtener trabajos/materiales NO cuadrado (pendientes)
+  const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
-    .select("horas")
-    .eq("clienteId", clienteId)
-    .eq("cuadrado", 1);
+    .select("horas, cuadrado")
+    .eq("clienteId", clienteId);
 
-  const { data: materialesCuadrados, error: errorMaterialesC } = await supabase
+  const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
-    .select("coste")
-    .eq("clienteid", clienteId)
-    .eq("cuadrado", 1);
+    .select("coste, cuadrado")
+    .eq("clienteid", clienteId);
 
-  if (errorTrabajosC || errorMaterialesC) {
+  if (errorTrabajos || errorMateriales) {
     console.error("❌ Error obteniendo trabajos o materiales");
     return;
   }
 
-  const totalCuadrado =
-    (trabajosCuadrados?.reduce(
-      (acc, t) => acc + (Number(t.horas) || 0) * precioHora,
-      0
-    ) || 0) +
-    (materialesCuadrados?.reduce((acc, m) => acc + (Number(m.coste) || 0), 0) ||
-      0);
+  // 3. Calcular deuda pendiente (solo los NO cuadrado)
+  const deudaTrabajos = (trabajos || [])
+    .filter((t) => !t.cuadrado)
+    .reduce((acc, t) => acc + (Number(t.horas) || 0) * precioHora, 0);
 
-  // Total de pagos realizados
+  const deudaMateriales = (materiales || [])
+    .filter((m) => !m.cuadrado)
+    .reduce((acc, m) => acc + (Number(m.coste) || 0), 0);
+
+  const deudaTotal = +(deudaTrabajos + deudaMateriales).toFixed(2);
+
+  // 4. Obtener total de pagos realizados
   const { data: pagos, error: errorPagos } = await supabase
     .from("pagos")
     .select("cantidad")
@@ -51,14 +53,16 @@ async function actualizarSaldoCliente(clienteId) {
     return;
   }
 
-  const totalPagado =
-    pagos?.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0) || 0;
+  const totalPagado = (pagos || []).reduce(
+    (acc, p) => acc + (Number(p.cantidad) || 0),
+    0
+  );
 
-  // saldoDisponible = lo pagado menos lo ya cuadrado (SIEMPRE, aunque queden tareas por cuadrar)
-  let saldoDisponible = +(totalPagado - totalCuadrado).toFixed(2);
-  saldoDisponible = saldoDisponible > 0 ? saldoDisponible : 0;
+  // 5. Calcular saldo disponible (el sobrante si hay)
+  let saldoDisponible = +(totalPagado - deudaTotal).toFixed(2);
+  saldoDisponible = Math.max(0, saldoDisponible);
 
-  // Actualiza en la tabla
+  // 6. Guardar en la base de datos SIEMPRE
   const { error: errorUpdate } = await supabase
     .from("clientes")
     .update({ saldoDisponible })

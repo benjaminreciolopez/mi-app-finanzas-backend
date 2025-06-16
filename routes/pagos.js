@@ -56,11 +56,10 @@ async function getResumenCliente(clienteId) {
     nombre: cliente.nombre,
     totalHorasPendientes: +totalHorasPendientes.toFixed(2),
     totalMaterialesPendientes: +totalMaterialesPendientes.toFixed(2),
-    totalPagado: +(Number(cliente.saldoDisponible) || 0), // ¡OJO! Aquí muestras el saldo actual
+    totalPagado: +(Number(cliente.saldoDisponible) || 0),
     totalDeuda,
     totalTareasPendientes: +totalTareasPendientes.toFixed(2),
-    saldoACuenta: +saldoDisponible.toFixed(2), // El frontend lo muestra como "a cuenta"
-    pagosUsados: [],
+    saldoACuenta: +saldoDisponible.toFixed(2),
   };
 }
 
