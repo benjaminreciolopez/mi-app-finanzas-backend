@@ -2,7 +2,7 @@ const supabase = require("../supabaseClient");
 
 /**
  * Actualiza el saldo disponible de un cliente.
- * El saldo es el sobrante de pagos realizados menos lo que ya está cuadrado (saldado).
+ * El saldo es el sobrante de pagos realizados menos lo que ya está cuadrado (saldado), siguiendo asignación FIFO.
  * Nunca puede ser negativo.
  */
 async function actualizarSaldoCliente(clienteId) {
@@ -22,13 +22,13 @@ async function actualizarSaldoCliente(clienteId) {
 
   const { data: trabajosCuadrados } = await supabase
     .from("trabajos")
-    .select("horas")
+    .select("horas, fecha")
     .eq("clienteId", clienteId)
     .eq("cuadrado", 1);
 
   const { data: materialesCuadrados } = await supabase
     .from("materiales")
-    .select("coste")
+    .select("coste, fecha")
     .eq("clienteid", clienteId)
     .eq("cuadrado", 1);
 
@@ -45,20 +45,43 @@ async function actualizarSaldoCliente(clienteId) {
   const totalPagado =
     pagos?.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0) || 0;
 
-  const totalCuadrado =
-    (trabajosCuadrados?.reduce(
-      (acc, t) => acc + (Number(t.horas) || 0) * precioHora,
-      0
-    ) || 0) +
-    (materialesCuadrados?.reduce((acc, m) => acc + (Number(m.coste) || 0), 0) ||
-      0);
+  // Junta todos los trabajos y materiales cuadrado=1, con fecha y cantidad
+  let tareasCuadradas = [
+    ...(trabajosCuadrados?.map((t) => ({
+      tipo: "trabajo",
+      fecha: t.fecha,
+      cantidad: (Number(t.horas) || 0) * precioHora,
+    })) || []),
+    ...(materialesCuadrados?.map((m) => ({
+      tipo: "material",
+      fecha: m.fecha,
+      cantidad: Number(m.coste) || 0,
+    })) || []),
+  ];
 
-  let saldoDisponible = +(totalPagado - totalCuadrado).toFixed(2);
+  // Ordena por fecha ascendente (más antiguo primero)
+  tareasCuadradas.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+  // Suma solo hasta agotar totalPagado (FIFO)
+  let totalUsado = 0;
+  let restante = totalPagado;
+  for (let tarea of tareasCuadradas) {
+    if (restante <= 0) break;
+    if (tarea.cantidad <= restante) {
+      totalUsado += tarea.cantidad;
+      restante -= tarea.cantidad;
+    } else {
+      totalUsado += restante; // Parcial
+      restante = 0;
+    }
+  }
+
+  let saldoDisponible = +(totalPagado - totalUsado).toFixed(2);
   saldoDisponible = Math.max(0, saldoDisponible); // Nunca negativo
 
-  // ← AQUÍ LOG IMPORTANTE
+  // ← LOG
   console.log(
-    `[actualizarSaldoCliente] totalPagado=${totalPagado}, totalCuadrado=${totalCuadrado}, saldoDisponible=${saldoDisponible} para cliente ${clienteId}`
+    `[actualizarSaldoCliente] totalPagado=${totalPagado}, totalUsado=${totalUsado}, saldoDisponible=${saldoDisponible} para cliente ${clienteId}`
   );
 
   const { error: errorUpdate } = await supabase
