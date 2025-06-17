@@ -85,7 +85,7 @@ async function actualizarSaldoCliente(clienteId) {
     const { data: pagosData, error: errorPagos } = await supabase
       .from("pagos")
       .select("cantidad")
-      .eq("clienteid", clienteId);
+      .eq("clienteId", clienteId);
 
     if (errorPagos) {
       console.error(
@@ -134,7 +134,7 @@ async function actualizarSaldoCliente(clienteId) {
     const { data: trabajosCuadradosData, error: errorTrabajos } = await supabase
       .from("trabajos")
       .select("id, horas") // Incluir ID para logs de advertencia más útiles
-      .eq("clienteid", clienteId)
+      .eq("clienteId", clienteId)
       .eq("cuadrado", 1);
 
     if (errorTrabajos) {
