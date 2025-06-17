@@ -14,7 +14,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: trabajos, error: errorTrabajos } = await supabase
     .from("trabajos")
     .select("id, fecha, horas")
-    .eq("clienteId", clienteId)
+    .eq("clienteid", clienteId)
     .eq("cuadrado", 0);
 
   if (errorTrabajos) {
@@ -38,7 +38,7 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
     .select("id, fecha, coste, descripcion")
-    .eq("clienteId", clienteId) // Corregido de clienteid a clienteId
+    .eq("clienteid", clienteId) // Corregido de clienteid a clienteId
     .eq("cuadrado", 0);
 
   if (errorMateriales) {
