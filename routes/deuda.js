@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
+const { Decimal } = require("decimal.js");
 
 // Devuelve trabajos y materiales pendientes (sin usar asignaciones ni saldoACuenta)
 router.get("/:clienteId/pendientes", async (req, res) => {
@@ -31,13 +32,13 @@ router.get("/:clienteId/pendientes", async (req, res) => {
   if (errorCliente || !cliente) {
     return res.status(400).json({ error: "Cliente no encontrado" });
   }
-  const precioHora = parseFloat(cliente.precioHora) || 0;
+  const precioHora = new Decimal(cliente.precioHora || 0);
 
   // 3. Obtener materiales no saldados (incluyendo descripción)
   const { data: materiales, error: errorMateriales } = await supabase
     .from("materiales")
     .select("id, fecha, coste, descripcion")
-    .eq("clienteid", clienteId) // Usando clienteid con minúscula como está en la BD
+    .eq("clienteId", clienteId) // Corregido de clienteid a clienteId
     .eq("cuadrado", 0);
 
   if (errorMateriales) {
@@ -47,28 +48,28 @@ router.get("/:clienteId/pendientes", async (req, res) => {
 
   // 4. Mapear trabajos
   const trabajosPendientes = (trabajos || []).map((t) => {
-    const horas = parseFloat(t.horas) || 0;
-    const coste = +(horas * precioHora).toFixed(2);
+    const horas = new Decimal(t.horas || 0);
+    const coste = horas.times(precioHora);
     return {
       id: t.id,
       tipo: "trabajo",
       fecha: t.fecha,
-      horas,
-      precioHora,
-      coste,
-      pendiente: coste,
+      horas: horas.toNumber(),
+      precioHora: precioHora.toNumber(),
+      coste: coste.toNumber(), // o toFixed(2) si se prefiere string
+      pendiente: coste.toNumber(), // o toFixed(2)
     };
   });
 
   // 5. Mapear materiales (añade descripción si la tienes)
   const materialesPendientes = (materiales || []).map((m) => {
-    const coste = parseFloat(m.coste) || 0;
+    const coste = new Decimal(m.coste || 0);
     return {
       id: m.id,
       tipo: "material",
       fecha: m.fecha,
-      coste,
-      pendiente: coste,
+      coste: coste.toNumber(), // o toFixed(2)
+      pendiente: coste.toNumber(), // o toFixed(2)
       descripcion: m.descripcion || "", // si la columna existe
     };
   });
