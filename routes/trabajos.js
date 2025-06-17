@@ -48,6 +48,30 @@ router.post("/", async (req, res) => {
 
   res.json({ id: data.id });
 });
+// ... justo antes de actualizar el trabajo:
+
+if (req.body.cuadrado === 1 && trabajoAntes.cuadrado !== 1) {
+  // Va a cuadrar un trabajo, verifica saldo disponible
+  const { data: cliente } = await supabase
+    .from("clientes")
+    .select("precioHora, saldoDisponible")
+    .eq("id", trabajoAntes.clienteId)
+    .single();
+
+  if (!cliente) {
+    return res.status(404).json({ error: "Cliente no encontrado" });
+  }
+  const costeTrabajo = Number(trabajoAntes.horas) * Number(cliente.precioHora);
+  const saldo = Number(cliente.saldoDisponible);
+
+  if (costeTrabajo > saldo + 0.001) {
+    return res.status(400).json({
+      error: `Saldo insuficiente (${saldo.toFixed(
+        2
+      )}€) para cuadrar este trabajo de ${costeTrabajo.toFixed(2)}€`,
+    });
+  }
+}
 
 // Actualizar trabajo
 router.put("/:id", async (req, res) => {
@@ -62,6 +86,34 @@ router.put("/:id", async (req, res) => {
 
   if (errorTrabajo || !trabajoAntes) {
     return res.status(404).json({ error: "Trabajo no encontrado" });
+  }
+
+  // 🔒 Protección: solo permite cuadrar si hay saldo suficiente
+  if (
+    req.body.cuadrado === 1 && // Se intenta marcar como cuadrado
+    trabajoAntes.cuadrado !== 1 // ... y antes NO estaba cuadrado
+  ) {
+    // Va a cuadrar un trabajo, verifica saldo disponible
+    const { data: cliente } = await supabase
+      .from("clientes")
+      .select("precioHora, saldoDisponible")
+      .eq("id", trabajoAntes.clienteId)
+      .single();
+
+    if (!cliente) {
+      return res.status(404).json({ error: "Cliente no encontrado" });
+    }
+    const costeTrabajo =
+      Number(trabajoAntes.horas) * Number(cliente.precioHora);
+    const saldo = Number(cliente.saldoDisponible);
+
+    if (costeTrabajo > saldo + 0.001) {
+      return res.status(400).json({
+        error: `Saldo insuficiente (${saldo.toFixed(
+          2
+        )}€) para cuadrar este trabajo de ${costeTrabajo.toFixed(2)}€`,
+      });
+    }
   }
 
   // Actualiza el trabajo

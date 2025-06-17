@@ -59,6 +59,33 @@ router.put("/:id", async (req, res) => {
     return res.status(404).json({ error: "Material no encontrado" });
   }
 
+  // 🔒 Protección: solo permite cuadrar si hay saldo suficiente
+  if (
+    req.body.cuadrado === 1 && // Se intenta marcar como cuadrado
+    materialAntes.cuadrado !== 1 // ... y antes NO estaba cuadrado
+  ) {
+    // Va a cuadrar un material, verifica saldo disponible
+    const { data: cliente } = await supabase
+      .from("clientes")
+      .select("saldoDisponible")
+      .eq("id", materialAntes.clienteId)
+      .single();
+
+    if (!cliente) {
+      return res.status(404).json({ error: "Cliente no encontrado" });
+    }
+    const costeMaterial = Number(materialAntes.coste);
+    const saldo = Number(cliente.saldoDisponible);
+
+    if (costeMaterial > saldo + 0.001) {
+      return res.status(400).json({
+        error: `Saldo insuficiente (${saldo.toFixed(
+          2
+        )}€) para cuadrar este material de ${costeMaterial.toFixed(2)}€`,
+      });
+    }
+  }
+
   // Actualiza el material (puede cambiar cualquier campo)
   const { error } = await supabase
     .from("materiales")
