@@ -50,29 +50,6 @@ router.post("/", async (req, res) => {
 });
 // ... justo antes de actualizar el trabajo:
 
-if (req.body.cuadrado === 1 && trabajoAntes.cuadrado !== 1) {
-  // Va a cuadrar un trabajo, verifica saldo disponible
-  const { data: cliente } = await supabase
-    .from("clientes")
-    .select("precioHora, saldoDisponible")
-    .eq("id", trabajoAntes.clienteId)
-    .single();
-
-  if (!cliente) {
-    return res.status(404).json({ error: "Cliente no encontrado" });
-  }
-  const costeTrabajo = Number(trabajoAntes.horas) * Number(cliente.precioHora);
-  const saldo = Number(cliente.saldoDisponible);
-
-  if (costeTrabajo > saldo + 0.001) {
-    return res.status(400).json({
-      error: `Saldo insuficiente (${saldo.toFixed(
-        2
-      )}€) para cuadrar este trabajo de ${costeTrabajo.toFixed(2)}€`,
-    });
-  }
-}
-
 // Actualizar trabajo
 router.put("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
