@@ -1,9 +1,18 @@
 // backend/supabaseClient.js
+require("dotenv").config();
 const { createClient } = require("@supabase/supabase-js");
 
-const SUPABASE_URL = "https://qexnthgfdvtvwoeykgun.supabase.co";
-const SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFleG50aGdmZHZ0dndvZXlrZ3VuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjEwMzYwNywiZXhwIjoyMDYxNjc5NjA3fQ.DX4jf483pIC0y4e9j5qbCCAVH-FujAdLbFF2h8ZtBjE";
+// Obtener credenciales del archivo .env
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("❌ ERROR: Variables de entorno SUPABASE_URL o SUPABASE_KEY no definidas");
+  console.error("Por favor, asegúrate de que el archivo .env contiene estas variables");
+  process.exit(1);
+}
+
+console.log("✅ Configurando cliente Supabase con URL:", SUPABASE_URL);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 

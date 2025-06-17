@@ -8,6 +8,9 @@ const supabase = require("../supabaseClient");
 async function actualizarSaldoCliente(clienteId) {
   console.log("→ Llamando a actualizarSaldoCliente para cliente", clienteId);
 
+  // Aseguramos que clienteId sea un número
+  clienteId = Number(clienteId);
+
   const { data: cliente, error: errorCliente } = await supabase
     .from("clientes")
     .select("precioHora")
@@ -20,16 +23,18 @@ async function actualizarSaldoCliente(clienteId) {
   }
   const precioHora = Number(cliente.precioHora) || 0;
 
+  // Corregimos para usar clienteId consistentemente (con mayúscula)
   const { data: trabajosCuadrados } = await supabase
     .from("trabajos")
     .select("horas, fecha")
     .eq("clienteId", clienteId)
     .eq("cuadrado", 1);
 
+  // Corregimos para usar clienteId consistentemente (con mayúscula)
   const { data: materialesCuadrados } = await supabase
     .from("materiales")
     .select("coste, fecha")
-    .eq("clienteid", clienteId)
+    .eq("clienteId", clienteId) // Cambiado de clienteid a clienteId
     .eq("cuadrado", 1);
 
   const { data: pagos, error: errorPagos } = await supabase
@@ -42,20 +47,22 @@ async function actualizarSaldoCliente(clienteId) {
     return;
   }
 
-  const totalPagado =
-    pagos?.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0) || 0;
+  // Aseguramos que totalPagado sea un número preciso
+  const totalPagado = pagos
+    ? pagos.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0)
+    : 0;
 
   // Junta todos los trabajos y materiales cuadrado=1, con fecha y cantidad
   let tareasCuadradas = [
     ...(trabajosCuadrados?.map((t) => ({
       tipo: "trabajo",
       fecha: t.fecha,
-      cantidad: (Number(t.horas) || 0) * precioHora,
+      cantidad: parseFloat((Number(t.horas) || 0) * precioHora).toFixed(2) * 1, // Aseguramos precisión decimal
     })) || []),
     ...(materialesCuadrados?.map((m) => ({
       tipo: "material",
       fecha: m.fecha,
-      cantidad: Number(m.coste) || 0,
+      cantidad: parseFloat(Number(m.coste) || 0).toFixed(2) * 1, // Aseguramos precisión decimal
     })) || []),
   ];
 
@@ -65,23 +72,46 @@ async function actualizarSaldoCliente(clienteId) {
   // Suma solo hasta agotar totalPagado (FIFO)
   let totalUsado = 0;
   let restante = totalPagado;
+
+  console.log(`[DEBUG] Total pagado antes de asignar: ${totalPagado}€`);
+  console.log(`[DEBUG] Tareas cuadradas: ${tareasCuadradas.length}`);
+
   for (let tarea of tareasCuadradas) {
     if (restante <= 0) break;
-    if (tarea.cantidad <= restante) {
-      totalUsado += tarea.cantidad;
-      restante -= tarea.cantidad;
+
+    const cantidadTarea = parseFloat(tarea.cantidad);
+    console.log(
+      `[DEBUG] Procesando tarea: ${tarea.tipo} - ${cantidadTarea}€ (Restante: ${restante}€)`
+    );
+
+    if (cantidadTarea <= restante) {
+      totalUsado += cantidadTarea;
+      restante -= cantidadTarea;
+      console.log(
+        `[DEBUG] Tarea cubierta completamente. Restante: ${restante}€`
+      );
     } else {
       totalUsado += restante; // Parcial
+      console.log(
+        `[DEBUG] Tarea cubierta parcialmente: ${restante}€ de ${cantidadTarea}€`
+      );
       restante = 0;
     }
   }
 
-  let saldoDisponible = +(totalPagado - totalUsado).toFixed(2);
+  // Aseguramos precisión decimal en el saldo final
+  let saldoDisponible = parseFloat((totalPagado - totalUsado).toFixed(2));
   saldoDisponible = Math.max(0, saldoDisponible); // Nunca negativo
 
-  // ← LOG
+  // Log detallado
   console.log(
-    `[actualizarSaldoCliente] totalPagado=${totalPagado}, totalUsado=${totalUsado}, saldoDisponible=${saldoDisponible} para cliente ${clienteId}`
+    `[actualizarSaldoCliente] totalPagado=${totalPagado.toFixed(
+      2
+    )}€, totalUsado=${totalUsado.toFixed(
+      2
+    )}€, saldoDisponible=${saldoDisponible.toFixed(
+      2
+    )}€ para cliente ${clienteId}`
   );
 
   const { error: errorUpdate } = await supabase
@@ -96,7 +126,9 @@ async function actualizarSaldoCliente(clienteId) {
     );
   } else {
     console.log(
-      `✅ Saldo actualizado: ${saldoDisponible}€ para cliente ${clienteId}`
+      `✅ Saldo actualizado: ${saldoDisponible.toFixed(
+        2
+      )}€ para cliente ${clienteId}`
     );
   }
 }

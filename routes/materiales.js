@@ -25,10 +25,23 @@ router.post("/", async (req, res) => {
     clienteId,
   } = req.body;
 
+  // Validación de datos
+  if (!clienteId || !coste || isNaN(Number(coste)) || Number(coste) <= 0) {
+    return res.status(400).json({ error: "Datos de material no válidos" });
+  }
+
   const { data, error } = await supabase
     .from("materiales")
     .insert([
-      { descripcion, coste, nombre, fecha, pagado, cuadrado, clienteId },
+      {
+        descripcion,
+        coste: parseFloat(Number(coste).toFixed(2)),
+        nombre,
+        fecha,
+        pagado,
+        cuadrado,
+        clienteId,
+      },
     ])
     .select()
     .single();
@@ -37,6 +50,8 @@ router.post("/", async (req, res) => {
     console.error("❌ Error insertando material:", error.message);
     return res.status(400).json({ error: error.message });
   }
+
+  console.log(`[INFO] Material añadido: ${coste}€ para cliente ${clienteId}`);
 
   // ✅ Recalcula saldo tras añadir material
   await actualizarSaldoCliente(clienteId);
@@ -74,10 +89,15 @@ router.put("/:id", async (req, res) => {
     if (!cliente) {
       return res.status(404).json({ error: "Cliente no encontrado" });
     }
-    const costeMaterial = Number(materialAntes.coste);
-    const saldo = Number(cliente.saldoDisponible);
+    const costeMaterial = parseFloat(Number(materialAntes.coste).toFixed(2));
+    const saldo = parseFloat(Number(cliente.saldoDisponible).toFixed(2));
 
-    if (costeMaterial > saldo + 0.001) {
+    console.log(
+      `[DEBUG] Verificando saldo para cuadrar material: Coste=${costeMaterial}€, Saldo=${saldo}€`
+    );
+
+    // Añadimos una pequeña tolerancia para errores de redondeo (0.01€)
+    if (costeMaterial > saldo + 0.01) {
       return res.status(400).json({
         error: `Saldo insuficiente (${saldo.toFixed(
           2
@@ -86,10 +106,18 @@ router.put("/:id", async (req, res) => {
     }
   }
 
+  // Preparamos los datos a actualizar con precisión numérica
+  const datosActualizados = { ...req.body };
+  if (datosActualizados.coste !== undefined) {
+    datosActualizados.coste = parseFloat(
+      Number(datosActualizados.coste).toFixed(2)
+    );
+  }
+
   // Actualiza el material (puede cambiar cualquier campo)
   const { error } = await supabase
     .from("materiales")
-    .update(req.body)
+    .update(datosActualizados)
     .eq("id", id);
 
   if (error) return res.status(400).json({ error: error.message });
@@ -124,6 +152,10 @@ router.put("/:id", async (req, res) => {
     }
   }
 
+  console.log(
+    `[INFO] Material ${id} actualizado para cliente ${materialAntes.clienteId}`
+  );
+
   // ✅ Recalcula saldo del cliente SIEMPRE, aunque solo cambies el coste o la fecha
   await actualizarSaldoCliente(materialAntes.clienteId);
 
@@ -157,6 +189,10 @@ router.delete("/:id", async (req, res) => {
       operacion: "restar",
     });
   }
+
+  console.log(
+    `[INFO] Material ${id} eliminado para cliente ${material.clienteId}`
+  );
 
   // ✅ Recalcula saldo SIEMPRE, aunque no estuviera pagado/cuadrado
   await actualizarSaldoCliente(material.clienteId);

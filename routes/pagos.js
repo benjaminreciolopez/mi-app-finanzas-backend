@@ -4,18 +4,29 @@ const supabase = require("../supabaseClient");
 const { actualizarSaldoCliente } = require("../utils/actualizarSaldoCliente");
 
 // --- Utilidad para devolver resumen de cliente con saldoDisponible ---
-// --- Utilidad para devolver resumen de cliente con saldoDisponible ---
 async function getResumenCliente(clienteId) {
+  // Aseguramos que clienteId sea un número
+  clienteId = Number(clienteId);
+
+  console.log(`[DEBUG] Generando resumen para cliente ${clienteId}`);
+
   const { data: cliente } = await supabase
     .from("clientes")
     .select("id, nombre, precioHora, saldoDisponible")
     .eq("id", clienteId)
     .single();
 
-  if (!cliente) return null;
+  if (!cliente) {
+    console.error(`[ERROR] Cliente ${clienteId} no encontrado`);
+    return null;
+  }
 
   const precioHora = Number(cliente.precioHora) || 0;
   const saldoDisponible = Number(cliente.saldoDisponible) || 0;
+
+  console.log(
+    `[DEBUG] Cliente ${cliente.nombre} - Precio hora: ${precioHora}€ - Saldo: ${saldoDisponible}€`
+  );
 
   const { data: trabajos } = await supabase
     .from("trabajos")
@@ -25,16 +36,19 @@ async function getResumenCliente(clienteId) {
   const { data: materiales } = await supabase
     .from("materiales")
     .select("id, fecha, coste, cuadrado")
-    .eq("clienteid", clienteId);
+    .eq("clienteId", clienteId); // Corregido de clienteid a clienteId
 
-  // 👇 Nuevo: Suma todos los pagos
+  // Suma todos los pagos
   const { data: pagos } = await supabase
     .from("pagos")
     .select("cantidad")
     .eq("clienteId", clienteId);
 
+  // Aseguramos precisión en los cálculos
   const totalPagado = pagos
-    ? pagos.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0)
+    ? parseFloat(
+        pagos.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0).toFixed(2)
+      )
     : 0;
 
   const trabajosPendientes = (trabajos || []).filter((t) => t.cuadrado !== 1);
@@ -42,35 +56,53 @@ async function getResumenCliente(clienteId) {
     (m) => m.cuadrado !== 1
   );
 
-  const totalHorasPendientes = trabajosPendientes.reduce(
-    (acc, t) => acc + Number(t.horas || 0),
-    0
+  console.log(
+    `[DEBUG] Trabajos pendientes: ${trabajosPendientes.length}, Materiales pendientes: ${materialesPendientes.length}`
   );
 
-  const totalTareasPendientes =
-    trabajosPendientes.reduce(
-      (acc, t) => acc + (Number(t.horas) || 0) * precioHora,
-      0
-    ) + materialesPendientes.reduce((acc, m) => acc + Number(m.coste || 0), 0);
+  const totalHorasPendientes = parseFloat(
+    trabajosPendientes
+      .reduce((acc, t) => acc + Number(t.horas || 0), 0)
+      .toFixed(2)
+  );
 
+  // Calculamos con precisión el total de tareas pendientes
+  const totalTrabajosPendientes = parseFloat(
+    trabajosPendientes
+      .reduce((acc, t) => acc + (Number(t.horas) || 0) * precioHora, 0)
+      .toFixed(2)
+  );
+
+  const totalMaterialesPendientes = parseFloat(
+    materialesPendientes
+      .reduce((acc, m) => acc + Number(m.coste || 0), 0)
+      .toFixed(2)
+  );
+
+  const totalTareasPendientes = parseFloat(
+    (totalTrabajosPendientes + totalMaterialesPendientes).toFixed(2)
+  );
+
+  // Calculamos la deuda con precisión
   const totalDeuda = Math.max(
-    +(totalTareasPendientes - saldoDisponible).toFixed(2),
+    parseFloat((totalTareasPendientes - saldoDisponible).toFixed(2)),
     0
   );
-  const totalMaterialesPendientes = materialesPendientes.reduce(
-    (acc, m) => acc + Number(m.coste || 0),
-    0
-  );
+
+  console.log(`[DEBUG] Total pagado: ${totalPagado}€`);
+  console.log(`[DEBUG] Total tareas pendientes: ${totalTareasPendientes}€`);
+  console.log(`[DEBUG] Saldo disponible: ${saldoDisponible}€`);
+  console.log(`[DEBUG] Total deuda: ${totalDeuda}€`);
 
   return {
     clienteId: cliente.id,
     nombre: cliente.nombre,
-    totalHorasPendientes: +totalHorasPendientes.toFixed(2),
-    totalMaterialesPendientes: +totalMaterialesPendientes.toFixed(2),
-    totalPagado: +totalPagado.toFixed(2), // ← ahora bien calculado
+    totalHorasPendientes,
+    totalMaterialesPendientes,
+    totalPagado,
     totalDeuda,
-    totalTareasPendientes: +totalTareasPendientes.toFixed(2),
-    saldoACuenta: +saldoDisponible.toFixed(2),
+    totalTareasPendientes,
+    saldoACuenta: saldoDisponible,
   };
 }
 
@@ -123,7 +155,7 @@ router.post("/", async (req, res) => {
       {
         clienteId,
         nombre: cliente.nombre,
-        cantidad,
+        cantidad: parseFloat(cantidad), // Aseguramos que sea número
         fecha,
         observaciones,
       },
@@ -132,8 +164,11 @@ router.post("/", async (req, res) => {
     .single();
 
   if (error) {
+    console.error("[ERROR] Error al insertar pago:", error.message);
     return res.status(400).json({ error: error.message });
   }
+
+  console.log(`[INFO] Pago añadido: ${cantidad}€ para cliente ${clienteId}`);
 
   // 1) Recalcula saldo del cliente
   await actualizarSaldoCliente(clienteId);
@@ -165,6 +200,8 @@ router.delete("/:id", async (req, res) => {
   if (errorEliminacion) {
     return res.status(500).json({ error: "Error al eliminar el pago" });
   }
+
+  console.log(`[INFO] Pago ${id} eliminado para cliente ${pago.clienteId}`);
 
   // 1) Actualiza saldo
   await actualizarSaldoCliente(pago.clienteId);
@@ -199,15 +236,20 @@ router.put("/:id", async (req, res) => {
   const { error: errorUpdate } = await supabase
     .from("pagos")
     .update({
-      cantidad,
+      cantidad: parseFloat(cantidad), // Aseguramos que sea número
       fecha,
       observaciones,
     })
     .eq("id", id);
 
   if (errorUpdate) {
+    console.error("[ERROR] Error al actualizar pago:", errorUpdate.message);
     return res.status(500).json({ error: "Error al actualizar el pago" });
   }
+
+  console.log(
+    `[INFO] Pago ${id} actualizado: ${cantidad}€ para cliente ${pagoOriginal.clienteId}`
+  );
 
   // 1) Actualiza saldo
   await actualizarSaldoCliente(pagoOriginal.clienteId);
