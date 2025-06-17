@@ -36,7 +36,7 @@ async function getResumenCliente(clienteId) {
   const { data: materiales } = await supabase
     .from("materiales")
     .select("id, fecha, coste, cuadrado")
-    .eq("clienteId", clienteId); // Corregido de clienteid a clienteId
+    .eq("clienteid", clienteId); // Usando clienteid con minúscula como está en la BD
 
   // Suma todos los pagos
   const { data: pagos } = await supabase

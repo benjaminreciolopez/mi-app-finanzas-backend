@@ -40,7 +40,7 @@ router.post("/", async (req, res) => {
         fecha,
         pagado,
         cuadrado,
-        clienteId,
+        clienteid: clienteId, // Usando clienteid con minúscula como está en la BD
       },
     ])
     .select()
@@ -66,7 +66,7 @@ router.put("/:id", async (req, res) => {
   // Obtiene estado anterior
   const { data: materialAntes, error: errorAntes } = await supabase
     .from("materiales")
-    .select("fecha, coste, pagado, cuadrado, clienteId")
+    .select("fecha, coste, pagado, cuadrado, clienteid")
     .eq("id", id)
     .single();
 
@@ -83,7 +83,7 @@ router.put("/:id", async (req, res) => {
     const { data: cliente } = await supabase
       .from("clientes")
       .select("saldoDisponible")
-      .eq("id", materialAntes.clienteId)
+      .eq("id", materialAntes.clienteid)
       .single();
 
     if (!cliente) {
@@ -153,11 +153,11 @@ router.put("/:id", async (req, res) => {
   }
 
   console.log(
-    `[INFO] Material ${id} actualizado para cliente ${materialAntes.clienteId}`
+    `[INFO] Material ${id} actualizado para cliente ${materialAntes.clienteid}`
   );
 
   // ✅ Recalcula saldo del cliente SIEMPRE, aunque solo cambies el coste o la fecha
-  await actualizarSaldoCliente(materialAntes.clienteId);
+  await actualizarSaldoCliente(materialAntes.clienteid);
 
   res.json({ message: "Material actualizado correctamente" });
 });
@@ -169,7 +169,7 @@ router.delete("/:id", async (req, res) => {
   // Busca material antes de borrarlo
   const { data: material, error: errorMaterial } = await supabase
     .from("materiales")
-    .select("fecha, coste, pagado, cuadrado, clienteId")
+    .select("fecha, coste, pagado, cuadrado, clienteid")
     .eq("id", id)
     .single();
 
@@ -191,11 +191,11 @@ router.delete("/:id", async (req, res) => {
   }
 
   console.log(
-    `[INFO] Material ${id} eliminado para cliente ${material.clienteId}`
+    `[INFO] Material ${id} eliminado para cliente ${material.clienteid}`
   );
 
   // ✅ Recalcula saldo SIEMPRE, aunque no estuviera pagado/cuadrado
-  await actualizarSaldoCliente(material.clienteId);
+  await actualizarSaldoCliente(material.clienteid);
 
   res.json({ message: "Material eliminado correctamente" });
 });

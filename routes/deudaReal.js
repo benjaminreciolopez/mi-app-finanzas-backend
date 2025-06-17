@@ -23,6 +23,11 @@ router.get("/", async (req, res) => {
   const { data: materiales, error: materialesError } = await supabase
     .from("materiales")
     .select("id, clienteId:clienteid, fecha, coste, cuadrado");
+    
+  // Añadimos log para depuración
+  if (materiales && materiales.length > 0) {
+    console.log("[DEBUG] Ejemplo de material:", materiales[0]);
+  }
 
   // 4. Obtener pagos
   const { data: pagos, error: pagosError } = await supabase
